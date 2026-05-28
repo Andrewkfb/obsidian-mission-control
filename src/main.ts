@@ -147,9 +147,9 @@ export default class HomeTab extends Plugin {
 	onunload(): void {
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE)
 		this.activeEmbeddedHomeTabViews.forEach(view => view.unload())
-		this.recentFileManager.unload()
-		this.bookmarkedFileManager.unload()
-		this.taskIndex.unload()
+		this.recentFileManager?.unload()
+		this.bookmarkedFileManager?.unload()   // only assigned when Bookmarks core plugin is on
+		this.taskIndex?.unload()
 	}
 
 	async loadSettings(): Promise<void> {

@@ -76,7 +76,7 @@ export const DEFAULT_SETTINGS: HomeTabSettings = {
     fontColorType: 'default', 
     fontWeight: 600,
     maxResults: 5,
-    showbookmarkedFiles: app.internalPlugins.getPluginById('bookmarks') ? true : false,
+    showbookmarkedFiles: true,  // evaluated safely at runtime in main.ts onLayoutReady
     showRecentFiles: false,
     maxRecentFiles: 5,
     storeRecentFile: true,
