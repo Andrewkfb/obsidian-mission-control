@@ -1,0 +1,10 @@
+{
+	"id": "mission-control",
+	"name": "Mission Control",
+	"version": "0.1.0",
+	"minAppVersion": "1.6.0",
+	"description": "A home-tab task and project dashboard sourced from a single folder, with Omnisearch integration.",
+	"author": "andrewkfb",
+	"authorUrl": "https://github.com/andrewkfb",
+	"isDesktopOnly": false
+}
