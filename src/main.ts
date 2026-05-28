@@ -4,6 +4,7 @@ import { HomeTabSettingTab, DEFAULT_SETTINGS, type HomeTabSettings } from './set
 import { pluginSettingsStore, bookmarkedFiles } from './store'
 import { RecentFileManager } from './recentFiles';
 import { bookmarkedFilesManager } from './bookmarkedFiles';
+import { TaskIndex } from './tasks/TaskIndex';
 
 declare module 'obsidian'{
 	interface App{
@@ -56,6 +57,7 @@ export default class HomeTab extends Plugin {
 	settings: HomeTabSettings;
 	recentFileManager: RecentFileManager
 	bookmarkedFileManager: bookmarkedFilesManager
+	taskIndex: TaskIndex
 	activeEmbeddedHomeTabViews: EmbeddedHomeTab[]
 	
 	async onload() {
@@ -76,6 +78,9 @@ export default class HomeTab extends Plugin {
 
 		this.recentFileManager = new RecentFileManager(app, this)
 		this.recentFileManager.load()
+
+		this.taskIndex = new TaskIndex(app, this)
+		this.taskIndex.load()
 
 		this.addCommand({
 			id: 'open-new-mission-control-tab',
@@ -144,6 +149,7 @@ export default class HomeTab extends Plugin {
 		this.activeEmbeddedHomeTabViews.forEach(view => view.unload())
 		this.recentFileManager.unload()
 		this.bookmarkedFileManager.unload()
+		this.taskIndex.unload()
 	}
 
 	async loadSettings(): Promise<void> {

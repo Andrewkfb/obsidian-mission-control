@@ -1,4 +1,4 @@
-import { App, Setting, PluginSettingTab, normalizePath, Platform } from 'obsidian'
+import { App, Setting, PluginSettingTab, normalizePath, Platform, TFolder } from 'obsidian'
 import type HomeTab from './main'
 import iconSuggester from './suggester/iconSuggester'
 import { lucideIcons, type LucideIcon } from './utils/lucideIcons'
@@ -56,6 +56,10 @@ export interface HomeTabSettings extends ObjectKeys{
     omnisearch: boolean
     showOmnisearchExcerpt: boolean
     notifiedOmnisearchMissing: boolean
+    taskSourceFolder: string
+    dayStartHour: number
+    showCompletedTasks: boolean
+    upcomingDays: number
 }
 
 export const DEFAULT_SETTINGS: HomeTabSettings = {
@@ -90,6 +94,10 @@ export const DEFAULT_SETTINGS: HomeTabSettings = {
     omnisearch: true,
     showOmnisearchExcerpt: true,
     notifiedOmnisearchMissing: false,
+    taskSourceFolder: '',
+    dayStartHour: 4,
+    showCompletedTasks: false,
+    upcomingDays: 7,
 }
 
 
@@ -106,6 +114,64 @@ export class HomeTabSettingTab extends PluginSettingTab{
         containerEl.empty()
 
 		containerEl.createEl('h3', {text: 'Mission Control settings'});
+
+        containerEl.createEl('h2', {text: 'Task management'});
+
+        const folders = this.app.vault.getAllLoadedFiles()
+            .filter((f): f is TFolder => f instanceof TFolder)
+            .map(f => f.path)
+            .sort((a, b) => a.localeCompare(b))
+
+        new Setting(containerEl)
+            .setName('Task source folder')
+            .setDesc('Mission Control reads tasks from markdown files in this folder (recursively). Leave at "(vault root)" to scan everything.')
+            .addDropdown(dropdown => {
+                dropdown.addOption('', '(vault root)')
+                folders.forEach(path => path !== '/' ? dropdown.addOption(path, path) : null)
+                dropdown.setValue(this.plugin.settings.taskSourceFolder)
+                dropdown.onChange(value => {
+                    this.plugin.settings.taskSourceFolder = value
+                    this.plugin.saveSettings()
+                    this.plugin.taskIndex?.rebuild()
+                })
+            })
+
+        new Setting(containerEl)
+            .setName('Day starts at')
+            .setDesc('Hour (0–23) at which a new day begins. Tasks stay on "Today" until this hour, so late-night work still shows the previous day.')
+            .addSlider(slider => slider
+                .setLimits(0, 12, 1)
+                .setValue(this.plugin.settings.dayStartHour)
+                .setDynamicTooltip()
+                .onChange(value => {
+                    this.plugin.settings.dayStartHour = value
+                    this.plugin.saveSettings()
+                    this.plugin.refreshOpenViews()
+                }))
+
+        new Setting(containerEl)
+            .setName('Upcoming window (days)')
+            .setDesc('How many days ahead the "Next days" group covers in the Upcoming pane.')
+            .addSlider(slider => slider
+                .setLimits(1, 30, 1)
+                .setValue(this.plugin.settings.upcomingDays)
+                .setDynamicTooltip()
+                .onChange(value => {
+                    this.plugin.settings.upcomingDays = value
+                    this.plugin.saveSettings()
+                    this.plugin.refreshOpenViews()
+                }))
+
+        new Setting(containerEl)
+            .setName('Show completed tasks')
+            .setDesc('Include completed tasks in the dashboard.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showCompletedTasks)
+                .onChange(value => {
+                    this.plugin.settings.showCompletedTasks = value
+                    this.plugin.saveSettings()
+                    this.plugin.refreshOpenViews()
+                }))
 
         containerEl.createEl('h2', {text: 'General settings'});
         new Setting(containerEl)

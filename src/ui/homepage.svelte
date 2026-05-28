@@ -8,6 +8,7 @@
 	import type { recentFile } from 'src/recentFiles';
 	import BookmarkedFiles from './bookmarkedFiles.svelte';
 	import RecentFiles from './recentFiles.svelte';
+	import TaskDashboard from './tasks/TaskDashboard.svelte';
 	import type { bookmarkedFile } from 'src/bookmarkedFiles';
 	import type HomeTab from 'src/main';
     
@@ -156,6 +157,10 @@
     {/if}
     
     <SearchBar {HomeTabSearchBar} embedded={embeddedView ? true : false}/>
+
+    {#if !embeddedView}
+        <TaskDashboard />
+    {/if}
 
     {#if isbookmarkedPluginEnabled && bookmarkedFileList && renderbookmarkedFiles}
         <BookmarkedFiles bookmarkedFiles={bookmarkedFileList} {view} {pluginSettings} bookmarkedFileManager={plugin.bookmarkedFileManager}/>
