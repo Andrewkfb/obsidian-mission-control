@@ -1,9 +1,11 @@
 <script lang="ts">
     import { onDestroy, onMount } from "svelte"
-    import { TFile } from "obsidian"
+    import { Notice, TFile } from "obsidian"
     import { tasks as tasksStore, pluginSettingsStore } from "src/store"
     import { buildDashboard, type ProjectSummary } from "src/tasks/grouping"
     import { getToday } from "src/tasks/dates"
+    import { toggleComplete } from "src/tasks/TaskWriter"
+    import type { Task } from "src/tasks/Task"
     import TaskItem from "./TaskItem.svelte"
 
     let activeProject: string | null = null
@@ -22,6 +24,15 @@
         showCompleted: $pluginSettingsStore?.showCompletedTasks ?? false,
     })
     $: totalToday = dashboard.today.reduce((n, g) => n + g.tasks.length, 0)
+
+    async function handleToggle(task: Task) {
+        try {
+            await toggleComplete(task, app.vault, todayISO)
+        } catch (e) {
+            new Notice(`Mission Control: could not update task — ${(e as Error).message}`)
+            console.error(e)
+        }
+    }
 
     function selectProject(p: ProjectSummary) {
         activeProject = activeProject === p.sourcePath ? null : p.sourcePath
@@ -74,7 +85,7 @@
                         <div class="mc-group">
                             <h3 class="mc-group-title">{group.title} <span class="mc-count">{group.tasks.length}</span></h3>
                             {#each group.tasks as task (task.sourcePath + ":" + task.sourceLine)}
-                                <TaskItem {task} {todayISO} />
+                                <TaskItem {task} {todayISO} on:toggle={(e) => handleToggle(e.detail.task)} />
                             {/each}
                         </div>
                     {/each}
@@ -92,7 +103,7 @@
                         <div class="mc-group">
                             <h3 class="mc-group-title">{group.title} <span class="mc-count">{group.tasks.length}</span></h3>
                             {#each group.tasks as task (task.sourcePath + ":" + task.sourceLine)}
-                                <TaskItem {task} {todayISO} />
+                                <TaskItem {task} {todayISO} on:toggle={(e) => handleToggle(e.detail.task)} />
                             {/each}
                         </div>
                     {/each}

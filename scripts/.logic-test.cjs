@@ -158,19 +158,19 @@ function fromISO(iso) {
 
 // src/tasks/grouping.ts
 function sortTasks(a, b) {
-  var _a, _b, _c, _d;
+  var _a2, _b2, _c, _d;
   const p = PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
   if (p !== 0)
     return p;
-  const ad = (_b = (_a = a.due) != null ? _a : a.scheduled) != null ? _b : "9999-99-99";
+  const ad = (_b2 = (_a2 = a.due) != null ? _a2 : a.scheduled) != null ? _b2 : "9999-99-99";
   const bd = (_d = (_c = b.due) != null ? _c : b.scheduled) != null ? _d : "9999-99-99";
   if (ad !== bd)
     return ad < bd ? -1 : 1;
   return a.text.localeCompare(b.text);
 }
 function effectiveDate(task) {
-  var _a;
-  return (_a = task.due) != null ? _a : task.scheduled;
+  var _a2;
+  return (_a2 = task.due) != null ? _a2 : task.scheduled;
 }
 function buildDashboard(allTasks, todayISO, opts) {
   const tasks = opts.showCompleted ? allTasks : allTasks.filter((t) => !t.checked);
@@ -240,6 +240,88 @@ function buildDashboard(allTasks, todayISO, opts) {
   return { today, upcoming, projects };
 }
 
+// src/tasks/recurrence.ts
+function computeNextDate(rule, fromISO_) {
+  const r = rule.trim().toLowerCase();
+  if (r === "daily" || r === "every day")
+    return addDaysISO(fromISO_, 1);
+  const daysMatch = r.match(/^every\s+(\d+)\s+days?$/);
+  if (daysMatch)
+    return addDaysISO(fromISO_, parseInt(daysMatch[1]));
+  if (r === "weekly" || r === "every week")
+    return addDaysISO(fromISO_, 7);
+  const weeksMatch = r.match(/^every\s+(\d+)\s+weeks?$/);
+  if (weeksMatch)
+    return addDaysISO(fromISO_, parseInt(weeksMatch[1]) * 7);
+  if (r === "monthly" || r === "every month")
+    return addMonths(fromISO_, 1);
+  const monthsMatch = r.match(/^every\s+(\d+)\s+months?$/);
+  if (monthsMatch)
+    return addMonths(fromISO_, parseInt(monthsMatch[1]));
+  if (r === "yearly" || r === "annually" || r === "every year")
+    return addMonths(fromISO_, 12);
+  const yearsMatch = r.match(/^every\s+(\d+)\s+years?$/);
+  if (yearsMatch)
+    return addMonths(fromISO_, parseInt(yearsMatch[1]) * 12);
+  if (r === "every weekday")
+    return nextWeekday(fromISO_);
+  return void 0;
+}
+function addMonths(iso, n) {
+  const d = fromISO(iso);
+  const targetMonth = d.getMonth() + n;
+  d.setMonth(targetMonth);
+  const intendedMonth = (targetMonth % 12 + 12) % 12;
+  if (d.getMonth() !== intendedMonth) {
+    d.setDate(0);
+  }
+  return toISO(d);
+}
+function nextWeekday(iso) {
+  const d = fromISO(iso);
+  d.setDate(d.getDate() + 1);
+  while (d.getDay() === 0 || d.getDay() === 6) {
+    d.setDate(d.getDate() + 1);
+  }
+  return toISO(d);
+}
+
+// src/tasks/TaskWriter.ts
+var CHECKBOX_RE = /^([\s>]*[-*+]\s+\[)(.)\](.*)$/;
+var DONE_DATE_RE = /\s*✅\s*\d{4}-\d{2}-\d{2}/g;
+function applyToggleToLine(line, toComplete, todayISO) {
+  const m = line.match(CHECKBOX_RE);
+  if (!m)
+    return line;
+  const prefix = m[1];
+  const rest = m[3];
+  if (toComplete) {
+    const cleaned = rest.replace(DONE_DATE_RE, "").trimEnd();
+    return `${prefix}x]${cleaned} \u2705 ${todayISO}`;
+  } else {
+    const cleaned = rest.replace(DONE_DATE_RE, "").trimEnd();
+    return `${prefix} ]${cleaned}`;
+  }
+}
+function buildNextRecurrence(line, task, todayISO) {
+  var _a2, _b2;
+  if (!task.recurrence)
+    return void 0;
+  const ref = (_b2 = (_a2 = task.due) != null ? _a2 : task.scheduled) != null ? _b2 : todayISO;
+  const nextDate = computeNextDate(task.recurrence, ref);
+  if (!nextDate)
+    return void 0;
+  let next = line.replace(DONE_DATE_RE, "").replace(/^([\s>]*[-*+]\s+\[)[^\]]\]/, "$1 ]");
+  if (task.due) {
+    next = next.replace(/📅\s*\d{4}-\d{2}-\d{2}/, `\u{1F4C5} ${nextDate}`);
+  } else if (task.scheduled) {
+    next = next.replace(/⏳\s*\d{4}-\d{2}-\d{2}/, `\u23F3 ${nextDate}`);
+  } else {
+    next = next.trimEnd() + ` \u{1F4C5} ${nextDate}`;
+  }
+  return next.trimEnd();
+}
+
 // scripts/logic-test.ts
 var failures = 0;
 function assert(cond, msg) {
@@ -299,7 +381,7 @@ console.log("\ngrouping:");
     const base = parseTaskLine(line, "A.md", 0, "A");
     return { ...base, ...over };
   };
-  const tasks = [
+  const taskList = [
     mk({ due: addDaysISO(today, -2) }),
     mk({ due: today }),
     mk({ scheduled: today }),
@@ -309,7 +391,7 @@ console.log("\ngrouping:");
     mk({}),
     mk({ due: addDaysISO(today, 60) })
   ];
-  const d = buildDashboard(tasks, today, { upcomingDays: 7, showCompleted: false });
+  const d = buildDashboard(taskList, today, { upcomingDays: 7, showCompleted: false });
   const todayKeys = d.today.map((g) => g.key);
   assert(todayKeys.includes("overdue"), "today has overdue group");
   assert(todayKeys.includes("dueToday"), "today has dueToday group");
@@ -321,6 +403,64 @@ console.log("\ngrouping:");
   assert(upKeys.includes("unscheduled"), "upcoming has unscheduled group");
   assert(d.projects.length === 1 && d.projects[0].project === "A", "projects rolled up by file");
   assert(d.projects[0].openCount === 8, "project open count includes all open tasks");
+}
+console.log("\nTaskWriter (applyToggleToLine):");
+var _a, _b;
+{
+  const openLine = "- [ ] Buy groceries \u{1F4C5} 2026-06-01";
+  const doneLine = "- [x] Buy groceries \u{1F4C5} 2026-06-01 \u2705 2026-05-28";
+  const indented = "  - [ ] Indented task";
+  const nocheckbox = "Just a paragraph.";
+  const completed = applyToggleToLine(openLine, true, "2026-05-28");
+  assert(completed.includes("[x]"), "toggle open\u2192done: status becomes [x]");
+  assert(completed.includes("\u2705 2026-05-28"), "toggle open\u2192done: \u2705 date appended");
+  assert(((_a = completed.match(/✅/g)) != null ? _a : []).length === 1, "toggle open\u2192done: only one \u2705 date");
+  const reopened = applyToggleToLine(doneLine, false, "2026-05-28");
+  assert(reopened.includes("[ ]"), "toggle done\u2192open: status becomes [ ]");
+  assert(!reopened.includes("\u2705"), "toggle done\u2192open: \u2705 date stripped");
+  const completedAgain = applyToggleToLine(doneLine, true, "2026-06-01");
+  assert(((_b = completedAgain.match(/✅/g)) != null ? _b : []).length === 1, "completing already-done: exactly one \u2705");
+  assert(applyToggleToLine(nocheckbox, true, "2026-05-28") === nocheckbox, "non-task line returned unchanged");
+  assert(applyToggleToLine(indented, true, "2026-05-28").includes("[x]"), "indented task toggles correctly");
+}
+console.log("\nrecurrence (computeNextDate):");
+{
+  assert(computeNextDate("every day", "2026-05-28") === "2026-05-29", "every day +1");
+  assert(computeNextDate("daily", "2026-05-28") === "2026-05-29", "daily +1");
+  assert(computeNextDate("every 3 days", "2026-05-28") === "2026-05-31", "every 3 days");
+  assert(computeNextDate("every week", "2026-05-28") === "2026-06-04", "every week");
+  assert(computeNextDate("every 2 weeks", "2026-05-28") === "2026-06-11", "every 2 weeks");
+  assert(computeNextDate("every month", "2026-01-31") === "2026-02-28", "every month: Jan 31 \u2192 Feb 28 (no overflow)");
+  assert(computeNextDate("every month", "2026-05-01") === "2026-06-01", "every month: normal case");
+  assert(computeNextDate("every 3 months", "2026-01-15") === "2026-04-15", "every 3 months");
+  assert(computeNextDate("every year", "2026-05-28") === "2027-05-28", "every year");
+  assert(computeNextDate("every weekday", "2026-05-28") === "2026-05-29", "every weekday: Thu\u2192Fri");
+  assert(computeNextDate("every weekday", "2026-05-29") === "2026-06-01", "every weekday: Fri\u2192Mon (skips weekend)");
+  assert(computeNextDate("banana", "2026-05-28") === void 0, "unknown rule returns undefined");
+}
+console.log("\nTaskWriter (buildNextRecurrence):");
+{
+  const base = {
+    sourcePath: "P.md",
+    sourceLine: 0,
+    rawText: "- [ ] Stand-up \u{1F501} every day \u{1F4C5} 2026-05-28",
+    text: "Stand-up",
+    status: "open",
+    statusChar: " ",
+    checked: false,
+    priority: "normal",
+    tags: [],
+    project: "P",
+    recurrence: "every day",
+    due: "2026-05-28"
+  };
+  const next = buildNextRecurrence(base.rawText, base, "2026-05-28");
+  assert(!!next, "buildNextRecurrence returns a line");
+  assert(next.includes("[ ]"), "next recurrence line is open");
+  assert(next.includes("\u{1F4C5} 2026-05-29"), "next recurrence: due date advanced by 1 day");
+  assert(!next.includes("\u2705"), "next recurrence: no completion stamp");
+  const unknown = buildNextRecurrence("- [ ] x \u{1F501} banana", { ...base, recurrence: "banana" }, "2026-05-28");
+  assert(unknown === void 0, "unknown recurrence rule: returns undefined gracefully");
 }
 console.log(`
 ${failures === 0 ? "ALL PASSED" : failures + " FAILED"}`);

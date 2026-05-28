@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { createEventDispatcher } from "svelte"
     import { TFile } from "obsidian"
     import type { Task } from "src/tasks/Task"
     import { relativeLabel } from "src/tasks/dates"
@@ -7,12 +8,28 @@
     export let task: Task
     export let todayISO: string
 
+    const dispatch = createEventDispatcher<{ toggle: { task: Task } }>()
+
     const PRIORITY_LABEL: Record<string, string> = {
         highest: "⏫⏫",
         high: "⏫",
         low: "🔽",
         lowest: "⏬",
         normal: "",
+    }
+
+    // Optimistic local state — immediately reflects the toggle visually
+    // while the async vault write happens in the background.
+    let pending = false
+
+    function handleCheckbox(e: MouseEvent | KeyboardEvent) {
+        e.stopPropagation()
+        if (pending) return
+        pending = true
+        dispatch("toggle", { task })
+        // Reset pending after a short window; the TaskIndex watcher will
+        // re-render the row with the real state once the vault write settles.
+        setTimeout(() => { pending = false }, 1500)
     }
 
     function openTask(newTab: boolean) {
@@ -28,19 +45,36 @@
         : task.scheduled
         ? relativeLabel(task.scheduled, todayISO)
         : ""
+    // Optimistic checked state: flip immediately on pending, revert when task prop updates.
+    $: displayChecked = pending ? !task.checked : task.checked
 </script>
 
 <div
     class="mc-task-item"
-    class:mc-checked={task.checked}
+    class:mc-checked={displayChecked}
     role="button"
     tabindex="0"
-    on:click={(e) => openTask(e.ctrlKey || e.metaKey)}
+    on:click={(e) => { if (!(e.target instanceof Element && e.target.closest('.mc-task-checkbox-btn'))) openTask(e.ctrlKey || e.metaKey) }}
     on:keydown={(e) => { if (e.key === "Enter") openTask(false) }}
 >
-    <span class="mc-task-checkbox" class:mc-done={task.checked} aria-hidden="true">
-        {task.statusChar === " " ? "" : task.statusChar}
-    </span>
+    <!-- Checkbox — separate interactive element so it doesn't open the file -->
+    <button
+        class="mc-task-checkbox-btn"
+        class:mc-done={displayChecked}
+        class:mc-pending={pending}
+        aria-label={displayChecked ? "Mark as open" : "Mark as done"}
+        aria-pressed={displayChecked}
+        on:click|stopPropagation={handleCheckbox}
+        on:keydown|stopPropagation={(e) => { if (e.key === " " || e.key === "Enter") handleCheckbox(e) }}
+    >
+        {#if displayChecked}
+            ✓
+        {:else if pending}
+            …
+        {:else}
+            &nbsp;
+        {/if}
+    </button>
 
     <span class="mc-task-text">{task.text}</span>
 
@@ -55,7 +89,7 @@
     {/if}
 
     {#if task.recurrence}
-        <span class="mc-task-recurrence" aria-label="Recurring">🔁</span>
+        <span class="mc-task-recurrence" aria-label="Recurring: {task.recurrence}">🔁</span>
     {/if}
 
     <span class="mc-task-project">{task.project}</span>
@@ -67,17 +101,18 @@
         align-items: center;
         gap: 8px;
         padding: 6px 8px;
-        min-height: 44px; /* comfortable touch target on mobile */
+        min-height: 44px;
         border-radius: var(--radius-s);
         cursor: pointer;
     }
     .mc-task-item:hover {
         background: var(--background-modifier-hover);
     }
-    .mc-task-checkbox {
+    .mc-task-checkbox-btn {
         flex: 0 0 auto;
-        width: 18px;
-        height: 18px;
+        width: 20px;
+        height: 20px;
+        min-width: 20px;
         border: 1.5px solid var(--text-muted);
         border-radius: 4px;
         display: inline-flex;
@@ -85,11 +120,26 @@
         justify-content: center;
         font-size: 0.8em;
         line-height: 1;
+        padding: 0;
+        background: transparent;
+        box-shadow: none;
+        cursor: pointer;
+        /* Expand tap area for mobile without changing visual size */
+        position: relative;
     }
-    .mc-task-checkbox.mc-done {
+    .mc-task-checkbox-btn::before {
+        content: "";
+        position: absolute;
+        inset: -10px;
+    }
+    .mc-task-checkbox-btn.mc-done {
         background: var(--interactive-accent);
         border-color: var(--interactive-accent);
         color: var(--text-on-accent);
+    }
+    .mc-task-checkbox-btn.mc-pending {
+        opacity: 0.5;
+        cursor: wait;
     }
     .mc-task-text {
         flex: 1 1 auto;
