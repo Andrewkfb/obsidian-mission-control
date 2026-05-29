@@ -1,6 +1,8 @@
 import esbuild from "esbuild";
 import process from "process";
 import builtins from 'builtin-modules'
+import fs from "fs";
+import path from "path";
 
 import esbuildSvelte from "esbuild-svelte";
 import sveltePreprocess from "svelte-preprocess";
@@ -13,6 +15,11 @@ if you want to view the source, please visit the github repository of this plugi
 `;
 
 const prod = (process.argv[2] === 'production');
+const pluginDir = prod ? '.' : '../developmentVault/.obsidian/plugins/home-tab';
+const mainOutput = path.join(pluginDir, 'main.js');
+const stylesOutput = path.join(pluginDir, 'styles.css');
+
+fs.mkdirSync(pluginDir, { recursive: true });
 
 esbuild.build({
 	banner: {
@@ -41,11 +48,13 @@ esbuild.build({
 	logLevel: "info",
 	sourcemap: prod ? false : 'inline',
 	treeShaking: true,
-	outfile: prod ? 'main.js' : '../developmentVault/.obsidian/plugins/home-tab/main.js',
+	outfile: mainOutput,
 	plugins: [
 		esbuildSvelte({
 		  compilerOptions: { css: true },
 		  preprocess: sveltePreprocess(),
 		}),
 	  ],
+}).then(() => {
+	fs.copyFileSync('src/styles.css', stylesOutput);
 }).catch(() => process.exit(1));
