@@ -3,7 +3,7 @@ import type HomeTab from "./main";
 import Homepage from './ui/homepage.svelte'
 import HomeTabSearchBar from "./homeTabSearchbar";
 
-export const VIEW_TYPE = "home-tab-view";
+export const VIEW_TYPE = "mission-control-view";
 
 export class EmbeddedHomeTab extends MarkdownRenderChild{
     searchBar: HomeTabSearchBar
@@ -86,7 +86,7 @@ export class HomeTabView extends FileView{
     }
     
     getDisplayText(): string {
-        return 'Home tab'
+        return 'Mission Control'
     }
 
     async onOpen(): Promise<void> {

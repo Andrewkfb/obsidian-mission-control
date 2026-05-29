@@ -1,4 +1,4 @@
-import { MarkdownView, Notice, Plugin, WorkspaceLeaf } from 'obsidian';
+import { Notice, Plugin, WorkspaceLeaf } from 'obsidian';
 import { EmbeddedHomeTab, HomeTabView, VIEW_TYPE } from 'src/homeView';
 import { HomeTabSettingTab, DEFAULT_SETTINGS, type HomeTabSettings } from './settings'
 import { pluginSettingsStore, bookmarkedFiles } from './store'
@@ -61,29 +61,39 @@ export default class HomeTab extends Plugin {
 	activeEmbeddedHomeTabViews: EmbeddedHomeTab[]
 	
 	async onload() {
-		console.log('Loading Mission Control plugin')
-		
-		await this.loadSettings();
-		this.addSettingTab(new HomeTabSettingTab(this.app, this))
-		this.registerView(VIEW_TYPE, (leaf) => new HomeTabView(leaf, this));		
+		// ── STEP 0: visible popup diagnostic — tells us the new code is running ──
+		// Remove this notice once the plugin is stable.
+		new Notice('MC step 0: onload started', 3000)
+		console.log('MC step 0: onload started')
 
-		// Replace new tabs with home tab view
-		this.registerEvent(this.app.workspace.on('layout-change', () => this.onLayoutChange()))
-		// Refocus search bar on leaf change
-		this.registerEvent(this.app.workspace.on('active-leaf-change', (leaf: WorkspaceLeaf) => {if(leaf.view instanceof HomeTabView){leaf.view.searchBar.focusSearchbar()}}))
+		try { await this.loadSettings() } catch(e) { new Notice(`MC CRASH loadSettings: ${String(e)}`, 15000); console.error(e); throw e }
+		new Notice('MC step 1: settings loaded', 2000)
 
-		// Ribbon icon — opens (or focuses) Mission Control
-		this.addRibbonIcon('home', 'Mission Control', () => this.activateView(false, true))
+		try { this.addSettingTab(new HomeTabSettingTab(this.app, this)) } catch(e) { new Notice(`MC CRASH addSettingTab: ${String(e)}`, 15000); console.error(e); throw e }
+		new Notice('MC step 2: settingTab added', 2000)
 
-		pluginSettingsStore.set(this.settings) // Store the settings for the svelte components
+		try { this.registerView(VIEW_TYPE, (leaf) => new HomeTabView(leaf, this)) } catch(e) { new Notice(`MC CRASH registerView: ${String(e)}`, 15000); console.error(e); throw e }
+		new Notice('MC step 3: view registered', 2000)
+
+		try {
+			this.registerEvent(this.app.workspace.on('layout-change', () => this.onLayoutChange()))
+			this.registerEvent(this.app.workspace.on('active-leaf-change', (leaf: WorkspaceLeaf) => {if(leaf.view instanceof HomeTabView){leaf.view.searchBar.focusSearchbar()}}))
+		} catch(e) { new Notice(`MC CRASH events: ${String(e)}`, 15000); console.error(e); throw e }
+		new Notice('MC step 4: events registered', 2000)
+
+		try { this.addRibbonIcon('home', 'Mission Control', () => this.activateView(false, true)) } catch(e) { new Notice(`MC CRASH ribbon: ${String(e)}`, 15000); console.error(e); throw e }
+		new Notice('MC step 5: ribbon added', 2000)
+
+		try { pluginSettingsStore.set(this.settings) } catch(e) { new Notice(`MC CRASH store.set: ${String(e)}`, 15000); console.error(e); throw e }
+		new Notice('MC step 6: store set', 2000)
 
 		this.activeEmbeddedHomeTabViews = []
 
-		this.recentFileManager = new RecentFileManager(app, this)
-		this.recentFileManager.load()
+		try { this.recentFileManager = new RecentFileManager(app, this); this.recentFileManager.load() } catch(e) { new Notice(`MC CRASH recentFileManager: ${String(e)}`, 15000); console.error(e); throw e }
+		new Notice('MC step 7: recentFileManager loaded', 2000)
 
-		this.taskIndex = new TaskIndex(app, this)
-		this.taskIndex.load()
+		try { this.taskIndex = new TaskIndex(app, this); this.taskIndex.load() } catch(e) { new Notice(`MC CRASH taskIndex: ${String(e)}`, 15000); console.error(e); throw e }
+		new Notice('MC step 8: taskIndex loaded', 2000)
 
 		this.addCommand({
 			id: 'open-new-mission-control-tab',
@@ -94,62 +104,56 @@ export default class HomeTab extends Plugin {
 			name: 'Replace current tab with Mission Control',
 			callback: () => this.activateView(true)})
 
-		// Wait for all plugins to load before check if the bookmarked plugin is enabled
 		this.app.workspace.onLayoutReady(() => {
-			if(this.app.internalPlugins.getPluginById('bookmarks')){
-				this.bookmarkedFileManager = new bookmarkedFilesManager(app, this, bookmarkedFiles)
-				this.bookmarkedFileManager.load()
-			}
+			try {
+				new Notice('MC step 9: onLayoutReady fired', 2000)
 
-			// One-time notice: Omnisearch is the default engine but isn't installed.
-			if(this.settings.omnisearch && !this.app.plugins.getPlugin('omnisearch') && !this.settings.notifiedOmnisearchMissing){
-				new Notice('Mission Control: install the Omnisearch community plugin for full-text search. Falling back to fuzzy file-name search until then.', 10000)
-				this.settings.notifiedOmnisearchMissing = true
-				this.saveSettings()
-			}
+				if(this.app.internalPlugins.getPluginById('bookmarks')){
+					this.bookmarkedFileManager = new bookmarkedFilesManager(app, this, bookmarkedFiles)
+					this.bookmarkedFileManager.load()
+				}
+				new Notice('MC step 10: bookmarks done', 2000)
 
-			this.registerMarkdownCodeBlockProcessor('search-bar', (source, el, ctx) => {
-				const view = this.app.workspace.getActiveViewOfType(MarkdownView)
-				if(view){
-					let embeddedHomeTab = new EmbeddedHomeTab(el, view, this, source)
-					this.activeEmbeddedHomeTabViews.push(embeddedHomeTab)
-					ctx.addChild(embeddedHomeTab)
+				if(this.settings.omnisearch && !this.app.plugins.getPlugin('omnisearch') && !this.settings.notifiedOmnisearchMissing){
+					new Notice('Mission Control: install Omnisearch for full-text search. Fuzzy fallback active.', 8000)
+					this.settings.notifiedOmnisearchMissing = true
+					this.saveSettings()
 				}
-			})
 
-			if(this.settings.newTabOnStart){
-				// If an Home tab leaf is already open focus it
-				const leaves = app.workspace.getLeavesOfType(VIEW_TYPE)
-				if(leaves.length > 0){
-					app.workspace.revealLeaf(leaves[0])
-					// If more than one home tab leaf is open close them
-					leaves.forEach((leaf, index) => {
-						if(index < 1) return
-						leaf.detach()
-					})
+				// search-bar code block skipped for v1
+				new Notice('MC step 11: codeblock skipped', 2000)
+
+				if(this.settings.newTabOnStart){
+					new Notice('MC step 12: opening new tab...', 2000)
+					const leaves = app.workspace.getLeavesOfType(VIEW_TYPE)
+					if(leaves.length > 0){
+						app.workspace.revealLeaf(leaves[0])
+						leaves.forEach((leaf, index) => { if(index > 0) leaf.detach() })
+					} else {
+						this.activateView(false, true)
+					}
+					if(this.settings.closePreviousSessionTabs){
+						const leafTypes: string[] = []
+						app.workspace.iterateRootLeaves((leaf) => {
+							const t = leaf.view.getViewType()
+							if(!leafTypes.includes(t) && t !== VIEW_TYPE) leafTypes.push(t)
+						})
+						leafTypes.forEach((type) => app.workspace.detachLeavesOfType(type))
+					}
 				}
-				else{
-					this.activateView(false, true)
-				}
-				// Close all other open leaves
-				if(this.settings.closePreviousSessionTabs){
-					// Get open leaves type
-					const leafTypes: string[] = []
-					app.workspace.iterateRootLeaves((leaf) => {
-						const leafType = leaf.view.getViewType()
-						if(leafTypes.indexOf(leafType) === -1 && leafType != VIEW_TYPE){
-							leafTypes.push(leafType)
-						}
-					})
-					leafTypes.forEach((type) => app.workspace.detachLeavesOfType(type))
-				}
+
+				new Notice('✅ MC fully loaded', 3000)
+			} catch(e) {
+				new Notice(`MC CRASH onLayoutReady: ${String(e)}`, 15000)
+				console.error('MC crash in onLayoutReady:', e)
+				throw e
 			}
 		})
 	}
 
 	onunload(): void {
 		this.app.workspace.detachLeavesOfType(VIEW_TYPE)
-		this.activeEmbeddedHomeTabViews.forEach(view => view.unload())
+		this.activeEmbeddedHomeTabViews?.forEach(view => view.unload())
 		this.recentFileManager?.unload()
 		this.bookmarkedFileManager?.unload()   // only assigned when Bookmarks core plugin is on
 		this.taskIndex?.unload()
