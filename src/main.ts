@@ -72,6 +72,9 @@ export default class HomeTab extends Plugin {
 		// Refocus search bar on leaf change
 		this.registerEvent(this.app.workspace.on('active-leaf-change', (leaf: WorkspaceLeaf) => {if(leaf.view instanceof HomeTabView){leaf.view.searchBar.focusSearchbar()}}))
 
+		// Ribbon icon — opens (or focuses) Mission Control
+		this.addRibbonIcon('home', 'Mission Control', () => this.activateView(false, true))
+
 		pluginSettingsStore.set(this.settings) // Store the settings for the svelte components
 
 		this.activeEmbeddedHomeTabViews = []
@@ -162,20 +165,27 @@ export default class HomeTab extends Plugin {
 	}
 
 	private onLayoutChange(): void{
-		if(this.settings.replaceNewTabs){
-			this.activateView()
-		}
+		if(!this.settings.replaceNewTabs) return
+		// Iterate all root leaves and replace any that are still empty.
+		// getMostRecentLeaf() is unreliable here — it often returns the
+		// previously-active leaf rather than the newly-created empty one.
+		this.app.workspace.iterateRootLeaves((leaf) => {
+			if(leaf.getViewState().type === 'empty'){
+				leaf.setViewState({ type: VIEW_TYPE })
+			}
+		})
 	}
 
 	public activateView(overrideView?: boolean, openNewTab?: boolean):void {
-		const leaf = openNewTab ? app.workspace.getLeaf('tab') : app.workspace.getMostRecentLeaf()
-		// const leaf = newTab ? app.workspace.getLeaf() : app.workspace.getMostRecentLeaf()
+		if(openNewTab){
+			const leaf = app.workspace.getLeaf('tab')
+			leaf.setViewState({ type: VIEW_TYPE })
+			app.workspace.revealLeaf(leaf)
+			return
+		}
+		const leaf = app.workspace.getMostRecentLeaf()
 		if(leaf && (overrideView || leaf.getViewState().type === 'empty')){
-			leaf.setViewState({
-				type: VIEW_TYPE,
-			})
-			// Focus newly opened tab
-			if(openNewTab){app.workspace.revealLeaf(leaf)}
+			leaf.setViewState({ type: VIEW_TYPE })
 		}
 	}
 
