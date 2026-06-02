@@ -25,3 +25,6 @@ data.json
 
 # dev-only build target
 developmentVault/
+
+# Logic-test build artifact
+scripts/.logic-test.cjs

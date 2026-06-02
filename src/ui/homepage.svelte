@@ -158,16 +158,18 @@
     
     <SearchBar {HomeTabSearchBar} embedded={embeddedView ? true : false}/>
 
+    {#if embeddedView}
+        {#if isbookmarkedPluginEnabled && bookmarkedFileList && renderbookmarkedFiles}
+            <BookmarkedFiles bookmarkedFiles={bookmarkedFileList} {view} {pluginSettings} bookmarkedFileManager={plugin.bookmarkedFileManager}/>
+        {/if}
+
+        {#if plugin.recentFileManager && recentFileList.length > 0 && renderRecentFiles}
+            <RecentFiles {recentFileList} {view} {pluginSettings} recentFileManager={plugin.recentFileManager}/>
+        {/if}
+    {/if}
+
     {#if !embeddedView}
-        <TaskDashboard />
-    {/if}
-
-    {#if isbookmarkedPluginEnabled && bookmarkedFileList && renderbookmarkedFiles}
-        <BookmarkedFiles bookmarkedFiles={bookmarkedFileList} {view} {pluginSettings} bookmarkedFileManager={plugin.bookmarkedFileManager}/>
-    {/if}
-
-    {#if plugin.recentFileManager && recentFileList.length > 0  && renderRecentFiles}
-        <RecentFiles {recentFileList} {view} {pluginSettings} recentFileManager={plugin.recentFileManager}/>
+        <TaskDashboard {plugin} />
     {/if}
 </main>
   
@@ -190,13 +192,31 @@
     }
 
     @media(max-width: 600px){
+        /* On phones the header otherwise pushes the task list below the fold. */
         .home-tab-wordmark-container{
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             justify-content: center;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .home-tab:not(.embedded) .home-tab-wordmark-container{
+            padding-top: 8px;
         }
         .home-tab-wordmark{
             text-align: center;
+        }
+        /* Cap user-configured wordmark size so it doesn't dominate the viewport. */
+        .home-tab-wordmark h1{
+            font-size: 1.8em !important;
+        }
+        /* Shrink the logo around its natural origin. */
+        .home-tab-logo{
+            transform: scale(0.45);
+            transform-origin: center;
+            margin-right: 0 !important;
+            margin-left: -8px;
         }
     }
     @media(max-height: 1000px){

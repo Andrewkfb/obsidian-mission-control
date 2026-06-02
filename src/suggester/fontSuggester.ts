@@ -2,8 +2,15 @@ import { PopoverTextInputSuggester,  type suggesterViewOptions } from "./suggest
 import type Fuse from 'fuse.js'
 import type { App, } from 'obsidian'
 import { ArrayFuzzySearch } from "./fuzzySearch"
-import { getFonts } from 'font-list'
 import FontSuggestion from "src/ui/svelteComponents/fontSuggestion.svelte";
+
+// `font-list` references the Node `process` global at module-load time, which
+// blows up on mobile (no `process`). Load it lazily so simply importing this
+// file is mobile-safe — call sites already guard with Platform checks.
+async function loadGetFonts(): Promise<() => Promise<string[]>> {
+    const mod = await import('font-list')
+    return mod.getFonts
+}
 
 export default class fontSuggester extends PopoverTextInputSuggester<Fuse.FuseResult<string>>{
     private fontList: string[]
@@ -19,6 +26,7 @@ export default class fontSuggester extends PopoverTextInputSuggester<Fuse.FuseRe
 
     async getInstalledFonts(): Promise<string[]>{
         if(!this.fontList){
+            const getFonts = await loadGetFonts()
             this.fontList = await getFonts()
         }
         return this.fontList

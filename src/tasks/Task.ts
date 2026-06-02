@@ -29,6 +29,9 @@ export interface Task {
 
     // Project = basename of the source file (one file = one project)
     project: string
+    // Nearest preceding markdown heading in the source file (without the leading '#'s).
+    // undefined when the task appears before any heading.
+    heading?: string
 }
 
 export const PRIORITY_ORDER: Record<TaskPriority, number> = {

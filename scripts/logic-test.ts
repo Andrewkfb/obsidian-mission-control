@@ -88,7 +88,7 @@ console.log('\ngrouping:')
     const upKeys = d.upcoming.map(g => g.key)
     assert(upKeys.includes('tomorrow'), 'upcoming has tomorrow group')
     assert(upKeys.includes('nextDays'), 'upcoming has nextDays group')
-    assert(upKeys.includes('unscheduled'), 'upcoming has unscheduled group')
+    assert(!upKeys.includes('unscheduled'), 'upcoming no longer surfaces dateless tasks')
     assert(d.projects.length === 1 && d.projects[0].project === 'A', 'projects rolled up by file')
     assert(d.projects[0].openCount === 8, 'project open count includes all open tasks')
 }

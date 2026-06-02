@@ -12,6 +12,9 @@ export interface ProjectSummary {
     project: string
     sourcePath: string
     openCount: number
+    // Distinct markdown headings that contain at least one open task, in
+    // first-encountered order. Tasks above any heading contribute nothing.
+    headings: string[]
 }
 
 export interface Dashboard {
@@ -45,7 +48,6 @@ export function buildDashboard(allTasks: Task[], todayISO: string, opts: { upcom
 
     const tomorrow: Task[] = []
     const nextDays: Task[] = []
-    const unscheduled: Task[] = []
 
     const tomorrowISO = addDaysISO(todayISO, 1)
     const windowEndISO = addDaysISO(todayISO, opts.upcomingDays)
@@ -73,10 +75,9 @@ export function buildDashboard(allTasks: Task[], todayISO: string, opts: { upcom
             tomorrow.push(task)
         } else if (eff && eff > tomorrowISO && eff <= windowEndISO) {
             nextDays.push(task)
-        } else if (!eff) {
-            // No date at all. In-progress with no date surfaces on Today; the rest are unscheduled.
-            if (task.status === 'inProgress') inProgress.push(task)
-            else unscheduled.push(task)
+        } else if (!eff && task.status === 'inProgress') {
+            // Dateless in-progress tasks still surface on Today; other dateless tasks are dropped.
+            inProgress.push(task)
         }
         // eff beyond the window is intentionally dropped from the at-a-glance view.
     }
@@ -97,16 +98,28 @@ export function buildDashboard(allTasks: Task[], todayISO: string, opts: { upcom
     const upcoming = [
         group('tomorrow', 'Tomorrow', tomorrow),
         group('nextDays', `Next ${opts.upcomingDays} days`, nextDays),
-        group('unscheduled', 'Unscheduled', unscheduled),
     ].filter(g => g.tasks.length > 0)
 
-    // --- Projects: open-task count per source file ---
+    // --- Projects: open-task count + distinct headings per source file ---
     const projectMap = new Map<string, ProjectSummary>()
+    const seenHeadings = new Map<string, Set<string>>()
     for (const task of tasks) {
         if (!isOpen(task)) continue
-        const existing = projectMap.get(task.sourcePath)
-        if (existing) existing.openCount++
-        else projectMap.set(task.sourcePath, { project: task.project, sourcePath: task.sourcePath, openCount: 1 })
+        let existing = projectMap.get(task.sourcePath)
+        if (existing) {
+            existing.openCount++
+        } else {
+            existing = { project: task.project, sourcePath: task.sourcePath, openCount: 1, headings: [] }
+            projectMap.set(task.sourcePath, existing)
+            seenHeadings.set(task.sourcePath, new Set())
+        }
+        if (task.heading) {
+            const seen = seenHeadings.get(task.sourcePath)!
+            if (!seen.has(task.heading)) {
+                seen.add(task.heading)
+                existing.headings.push(task.heading)
+            }
+        }
     }
     const projects = [...projectMap.values()].sort((a, b) => b.openCount - a.openCount || a.project.localeCompare(b.project))
 

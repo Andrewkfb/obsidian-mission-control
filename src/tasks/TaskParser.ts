@@ -50,7 +50,7 @@ function statusFromChar(char: string): TaskStatus {
 }
 
 /** Parse one line. Returns a Task or null if the line is not a task. */
-export function parseTaskLine(line: string, sourcePath: string, lineNumber: number, project: string): Task | null {
+export function parseTaskLine(line: string, sourcePath: string, lineNumber: number, project: string, heading?: string): Task | null {
     const match = line.match(TASK_LINE)
     if (!match) return null
 
@@ -71,6 +71,7 @@ export function parseTaskLine(line: string, sourcePath: string, lineNumber: numb
         priority: 'normal',
         tags: [],
         project,
+        heading,
     }
 
     // Emoji date fields: "📅 2026-06-01"
@@ -133,12 +134,22 @@ export function parseTaskLine(line: string, sourcePath: string, lineNumber: numb
     return task
 }
 
+// ATX heading: 1–6 '#' + space + heading text. Captures the heading text.
+// (Setext-style underlined headings are intentionally not handled.)
+const HEADING_LINE = /^(#{1,6})\s+(.+?)\s*#*\s*$/
+
 /** Parse an entire file's contents into tasks. */
 export function parseTasks(content: string, sourcePath: string, project: string): Task[] {
     const tasks: Task[] = []
     const lines = content.split('\n')
+    let currentHeading: string | undefined
     for (let i = 0; i < lines.length; i++) {
-        const task = parseTaskLine(lines[i], sourcePath, i, project)
+        const headingMatch = lines[i].match(HEADING_LINE)
+        if (headingMatch) {
+            currentHeading = headingMatch[2].trim()
+            continue
+        }
+        const task = parseTaskLine(lines[i], sourcePath, i, project, currentHeading)
         if (task) tasks.push(task)
     }
     return tasks

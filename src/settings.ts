@@ -9,6 +9,8 @@ import fontSuggester from './suggester/fontSuggester'
 import type { recentFileStore } from './recentFiles'
 import type { bookmarkedFileStore } from './bookmarkedFiles'
 import { checkFont } from './utils/fontValidator'
+import { noteTagsByPath } from './store'
+import { get } from 'svelte/store'
 
 type ColorChoices = 'default' | 'accentColor' | 'custom'
 type LogoChoiches = 'default' | 'imagePath' | 'imageLink' | 'lucideIcon' | 'oldLogo' | 'none'
@@ -60,6 +62,19 @@ export interface HomeTabSettings extends ObjectKeys{
     dayStartHour: number
     showCompletedTasks: boolean
     upcomingDays: number
+    // Whitelist of tags (without '#') that appear in the dashboard's tag-filter menu.
+    // Empty array = show every tag found in indexed notes.
+    allowedFilterTags: string[]
+    // Currently-selected filter tags. OR semantics: a task passes if its source note
+    // has at least one of these tags. Persisted across sessions.
+    activeFilterTags: string[]
+    // When true, show the nearest markdown heading next to each task and list
+    // distinct headings under each project row.
+    showHeadings: boolean
+    // IDs of tabs that are visible in the task dashboard.
+    activeTabs: string[]
+    // Vault-relative path to the inbox folder shown in the Inbox tab.
+    inboxFolder: string
 }
 
 export const DEFAULT_SETTINGS: HomeTabSettings = {
@@ -98,6 +113,11 @@ export const DEFAULT_SETTINGS: HomeTabSettings = {
     dayStartHour: 4,
     showCompletedTasks: false,
     upcomingDays: 7,
+    allowedFilterTags: [],
+    activeFilterTags: [],
+    showHeadings: true,
+    activeTabs: ['today', 'upcoming', 'projects', 'inbox', 'bookmarks', 'recent'],
+    inboxFolder: '01 Inbox',
 }
 
 
@@ -124,9 +144,9 @@ export class HomeTabSettingTab extends PluginSettingTab{
 
         new Setting(containerEl)
             .setName('Task source folder')
-            .setDesc('Mission Control reads tasks from markdown files in this folder (recursively). Leave at "(vault root)" to scan everything.')
+            .setDesc('Mission Control reads tasks from markdown files in this folder (recursively). No tasks are pulled until a folder is chosen.')
             .addDropdown(dropdown => {
-                dropdown.addOption('', '(vault root)')
+                dropdown.addOption('', '(none — pick a folder)')
                 folders.forEach(path => path !== '/' ? dropdown.addOption(path, path) : null)
                 dropdown.setValue(this.plugin.settings.taskSourceFolder)
                 dropdown.onChange(value => {
@@ -172,6 +192,46 @@ export class HomeTabSettingTab extends PluginSettingTab{
                     this.plugin.saveSettings()
                     this.plugin.refreshOpenViews()
                 }))
+
+        new Setting(containerEl)
+            .setName('Show headings')
+            .setDesc('Display the nearest markdown heading next to each task and list distinct headings under each project.')
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.showHeadings)
+                .onChange(value => {
+                    this.plugin.settings.showHeadings = value
+                    this.plugin.saveSettings()
+                    this.plugin.refreshOpenViews()
+                }))
+
+        this.renderTagFilterWhitelist(containerEl)
+
+        containerEl.createEl('h2', {text: 'Dashboard tabs'})
+
+        const ALL_TABS: { id: string; label: string; requiresBookmarks?: true }[] = [
+            { id: 'today',     label: 'Today' },
+            { id: 'upcoming',  label: 'Upcoming' },
+            { id: 'projects',  label: 'Projects' },
+            { id: 'inbox',     label: 'Inbox' },
+            { id: 'bookmarks', label: 'Bookmarks', requiresBookmarks: true },
+            { id: 'recent',    label: 'Recent Files' },
+        ]
+
+        for (const tabDef of ALL_TABS) {
+            if (tabDef.requiresBookmarks && !this.app.internalPlugins.getPluginById('bookmarks')) continue
+            new Setting(containerEl)
+                .setName(tabDef.label)
+                .addToggle(toggle => toggle
+                    .setValue(this.plugin.settings.activeTabs.includes(tabDef.id))
+                    .onChange(value => {
+                        const current = new Set(this.plugin.settings.activeTabs)
+                        if (value) current.add(tabDef.id); else current.delete(tabDef.id)
+                        this.plugin.settings.activeTabs = [...current]
+                        this.plugin.saveSettings()
+                        this.plugin.refreshOpenViews()
+                    })
+                )
+        }
 
         containerEl.createEl('h2', {text: 'General settings'});
         new Setting(containerEl)
@@ -272,51 +332,37 @@ export class HomeTabSettingTab extends PluginSettingTab{
         }
 
         containerEl.createEl('h2', {text: 'Files display'});
-        
-        if(app.internalPlugins.getPluginById('bookmarks')){
-            new Setting(containerEl)
-            .setName('Show bookmarked files')
-            .setDesc('Shows bookmarked files under the search bar.')
-            .addToggle((toggle) => toggle
-                .setValue(this.plugin.settings.showbookmarkedFiles)
-                .onChange((value) => {this.plugin.settings.showbookmarkedFiles = value; this.plugin.saveSettings(); this.plugin.refreshOpenViews()
-                    // if(value && !this.plugin.bookmarkedFileManager){
-                    //     this.plugin.bookmarkedFileManager = new bookmarkedFileManager(this.app, this.plugin, bookmarkedFiles)
-                    // }
-                    // value ? this.plugin.bookmarkedFileManager.load() : this.plugin.bookmarkedFileManager.unload() // Detach bookmarkedFileManager instance
-                }))
-        }
 
         new Setting(containerEl)
-            .setName('Show recent files')
-            .setDesc('Displays recent files under the search bar.')
-            .addToggle((toggle) => toggle
-                .setValue(this.plugin.settings.showRecentFiles)
-                .onChange((value) => {this.plugin.settings.showRecentFiles = value; this.plugin.saveSettings(); this.display(); this.plugin.refreshOpenViews()
-                    // if(value && !this.plugin.recentFileManager){
-                    //     this.plugin.recentFileManager = new RecentFileManager(this.app, this.plugin)
-                    // }
-                    // value ? this.plugin.recentFileManager.load() : this.plugin.recentFileManager.unload() // Detach recentFileManager instance
-                }))
+            .setName('Inbox folder')
+            .setDesc('Folder whose files are shown in the Inbox tab, sorted by most-recently modified.')
+            .addDropdown(dropdown => {
+                dropdown.addOption('', '(none — pick a folder)')
+                folders.forEach(path => path !== '/' ? dropdown.addOption(path, path) : null)
+                dropdown.setValue(this.plugin.settings.inboxFolder)
+                dropdown.onChange(value => {
+                    this.plugin.settings.inboxFolder = value
+                    this.plugin.saveSettings()
+                    this.plugin.refreshOpenViews()
+                })
+            })
 
-        if(this.plugin.settings.showRecentFiles){
-            new Setting(containerEl)
+        new Setting(containerEl)
             .setName('Store last recent files')
             .setDesc('Remembers the recent files of the previous session.')
             .addToggle((toggle) => toggle
                 .setValue(this.plugin.settings.storeRecentFile)
                 .onChange((value) => {this.plugin.settings.storeRecentFile = value; this.plugin.saveSettings()}))
 
-            new Setting(containerEl)
-                .setName('Recent files')
-                .setDesc('Set how many recent files display.')
-                .addSlider((slider) => slider
-                    .setValue(this.plugin.settings.maxRecentFiles)
-                    .setLimits(1, 25, 1)
-                    .setDynamicTooltip()
-                    .onChange((value) => {this.plugin.recentFileManager.onNewMaxListLenght(value); this.plugin.settings.maxRecentFiles = value; this.plugin.saveSettings()}))
-                .then((settingEl) => this.addResetButton(settingEl, 'maxRecentFiles'))
-        }
+        new Setting(containerEl)
+            .setName('Recent files')
+            .setDesc('Set how many recent files display.')
+            .addSlider((slider) => slider
+                .setValue(this.plugin.settings.maxRecentFiles)
+                .setLimits(1, 25, 1)
+                .setDynamicTooltip()
+                .onChange((value) => {this.plugin.recentFileManager.onNewMaxListLenght(value); this.plugin.settings.maxRecentFiles = value; this.plugin.saveSettings()}))
+            .then((settingEl) => this.addResetButton(settingEl, 'maxRecentFiles'))
 
         containerEl.createEl('h2', {text: 'Appearance'});
 
@@ -579,6 +625,44 @@ export class HomeTabSettingTab extends PluginSettingTab{
             .setValue(this.plugin.settings.selectionHighlight)
             .onChange((value: ColorChoices) => {this.plugin.settings.selectionHighlight = value; this.plugin.saveSettings(); this.plugin.refreshOpenViews()}))
         .then((settingEl) => this.addResetButton(settingEl, 'selectionHighlight'))
+    }
+
+    /**
+     * Renders the tag-filter whitelist control. Pulls available tags from the
+     * indexed source folder (via `noteTagsByPath`) and lets the user toggle which
+     * ones appear in the dashboard's filter menu. Empty list = show every tag.
+     */
+    private renderTagFilterWhitelist(containerEl: HTMLElement): void {
+        const availableTags = new Set<string>()
+        for (const tags of get(noteTagsByPath).values()) for (const t of tags) availableTags.add(t)
+        const allTags = [...availableTags].sort((a, b) => a.localeCompare(b))
+
+        const setting = new Setting(containerEl)
+            .setName('Tag filter menu')
+            .setDesc('Pick which tags appear in the dashboard\'s filter menu. Leave empty to show every tag found in your task notes.')
+
+        const wrapper = setting.controlEl.createDiv({ cls: 'mc-tag-whitelist' })
+        if (allTags.length === 0) {
+            wrapper.createEl('em', { text: 'No tags found in the configured source folder yet.' })
+            return
+        }
+        for (const tag of allTags) {
+            const row = wrapper.createDiv({ cls: 'mc-tag-whitelist-row' })
+            const cb = row.createEl('input', { type: 'checkbox' })
+            cb.checked = this.plugin.settings.allowedFilterTags.includes(tag)
+            row.createEl('label', { text: '#' + tag })
+            cb.addEventListener('change', () => {
+                const list = new Set(this.plugin.settings.allowedFilterTags)
+                if (cb.checked) list.add(tag); else list.delete(tag)
+                this.plugin.settings.allowedFilterTags = [...list].sort()
+                // Drop any active filter tags that just left the whitelist.
+                if (this.plugin.settings.allowedFilterTags.length > 0) {
+                    this.plugin.settings.activeFilterTags = this.plugin.settings.activeFilterTags
+                        .filter(t => this.plugin.settings.allowedFilterTags.includes(t))
+                }
+                this.plugin.saveSettings()
+            })
+        }
     }
 
     addResetButton(settingElement: Setting, settingKey: string, refreshView: boolean = true){

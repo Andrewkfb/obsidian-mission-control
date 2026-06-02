@@ -4,6 +4,7 @@
     import type { Task } from "src/tasks/Task"
     import { relativeLabel } from "src/tasks/dates"
     import { overdueByDays } from "src/tasks/grouping"
+    import { pluginSettingsStore } from "src/store"
 
     export let task: Task
     export let todayISO: string
@@ -37,6 +38,32 @@
         if (file instanceof TFile) {
             app.workspace.getLeaf(newTab).openFile(file, { eState: { line: task.sourceLine } })
         }
+    }
+
+    // Split task.text into alternating plain text + wikilink segments so each
+    // [[Link]] (or [[Target|Display]]) becomes a clickable anchor.
+    type Segment = { kind: "text"; value: string } | { kind: "link"; target: string; display: string }
+    function parseSegments(text: string): Segment[] {
+        const out: Segment[] = []
+        const re = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g
+        let last = 0
+        let m: RegExpExecArray | null
+        while ((m = re.exec(text)) !== null) {
+            if (m.index > last) out.push({ kind: "text", value: text.slice(last, m.index) })
+            const target = m[1].trim()
+            const display = (m[2] ?? m[1]).trim()
+            out.push({ kind: "link", target, display })
+            last = m.index + m[0].length
+        }
+        if (last < text.length) out.push({ kind: "text", value: text.slice(last) })
+        return out
+    }
+    $: segments = parseSegments(task.text)
+
+    function openLink(e: MouseEvent | KeyboardEvent, target: string) {
+        e.stopPropagation()
+        e.preventDefault()
+        app.workspace.openLinkText(target, task.sourcePath, e.ctrlKey || e.metaKey)
     }
 
     $: overdueDays = overdueByDays(task, todayISO)
@@ -76,7 +103,16 @@
         {/if}
     </button>
 
-    <span class="mc-task-text">{task.text}</span>
+    <span class="mc-task-text">
+        {#each segments as seg}
+            {#if seg.kind === "text"}{seg.value}{:else}<a
+                class="mc-task-link internal-link"
+                href={seg.target}
+                on:click={(e) => openLink(e, seg.target)}
+                on:keydown={(e) => { if (e.key === "Enter") openLink(e, seg.target) }}
+            >{seg.display}</a>{/if}
+        {/each}
+    </span>
 
     {#if PRIORITY_LABEL[task.priority]}
         <span class="mc-task-priority">{PRIORITY_LABEL[task.priority]}</span>
@@ -92,7 +128,9 @@
         <span class="mc-task-recurrence" aria-label="Recurring: {task.recurrence}">🔁</span>
     {/if}
 
-    <span class="mc-task-project">{task.project}</span>
+    <span class="mc-task-project">
+        {task.project}{#if task.heading && $pluginSettingsStore?.showHeadings}<span class="mc-task-heading"> › {task.heading}</span>{/if}
+    </span>
 </div>
 
 <style>
@@ -104,6 +142,9 @@
         min-height: 44px;
         border-radius: var(--radius-s);
         cursor: pointer;
+        max-width: 100%;
+        overflow: hidden;
+        box-sizing: border-box;
     }
     .mc-task-item:hover {
         background: var(--background-modifier-hover);
@@ -143,6 +184,7 @@
     }
     .mc-task-text {
         flex: 1 1 auto;
+        min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -150,6 +192,14 @@
     .mc-checked .mc-task-text {
         text-decoration: line-through;
         color: var(--text-muted);
+    }
+    .mc-task-link {
+        color: var(--text-accent);
+        text-decoration: none;
+        cursor: pointer;
+    }
+    .mc-task-link:hover {
+        text-decoration: underline;
     }
     .mc-task-priority {
         flex: 0 0 auto;
@@ -170,15 +220,19 @@
         font-size: 0.8em;
     }
     .mc-task-project {
-        flex: 0 0 auto;
+        flex: 0 1 auto;
+        min-width: 0;
         font-size: 0.75em;
         color: var(--text-accent);
         background: var(--background-modifier-hover);
         padding: 2px 8px;
         border-radius: 10px;
-        max-width: 140px;
+        max-width: min(220px, 40vw);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+    .mc-task-heading {
+        color: var(--text-muted);
     }
 </style>

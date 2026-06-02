@@ -5,7 +5,8 @@
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
-		"build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production",
+		"build": "tsc --noEmit --skipLibCheck && node esbuild.config.mjs production && npm run deploy",
+		"deploy": "VAULT_PLUGIN_DIR=\"${VAULT_PLUGIN_DIR:-/Users/andrewkfb/Documents/Foundry/.obsidian/plugins/mission-control}\"; if [ -d \"$VAULT_PLUGIN_DIR\" ]; then cp main.js manifest.json \"$VAULT_PLUGIN_DIR/\" && cp src/styles.css \"$VAULT_PLUGIN_DIR/styles.css\" && echo \"Deployed to $VAULT_PLUGIN_DIR\"; else echo \"Skipping deploy: $VAULT_PLUGIN_DIR not found\"; fi",
 		"version": "node version-bump.mjs && git add manifest.json versions.json"
 	},
 	"keywords": [],
