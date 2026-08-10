@@ -1,10 +1,10 @@
 <script lang="ts">
-    import { File, FilePieChart, FileText, FileAudio, FileImage, FileVideo, X as DeleteIcon, MoreHorizontal} from 'lucide-svelte'
-    import { type TFile, Keymap, type PaneType, App, Menu, getIcon } from 'obsidian';
+    import { type TFile, Keymap, type PaneType, App, Menu } from 'obsidian';
     import { getFileTypeFromExtension } from 'src/utils/getFileTypeUtils';
 	import type { HomeTabSettings } from 'src/settings';
 	import { createEventDispatcher } from 'svelte';
 	import type { LucideIcon } from 'src/utils/lucideIcons';
+    import ObsidianIcon from './ObsidianIcon.svelte';
 
     export let app: App
     export let file: TFile
@@ -12,20 +12,27 @@
     export let contextualMenu: Menu
     export let customIcon: LucideIcon | undefined = undefined
 
-    // Trim filename if too long
-    // const filename = file.basename.length > 38 ? file.basename.slice(0,35) + '...' : file.basename
     const filename = file.basename
     const fileType = getFileTypeFromExtension(file.extension)
+    $: icon = customIcon ?? (fileType === 'markdown'
+        ? 'file-text'
+        : fileType === 'image'
+        ? 'file-image'
+        : fileType === 'video'
+        ? 'file-video'
+        : fileType === 'audio'
+        ? 'file-audio'
+        : 'file')
 
     const dispatch = createEventDispatcher<{itemMenu:{file: TFile}}>()
 
     function handleFileOpening(file: TFile, newTab?: boolean | PaneType){
         const leaf = app.workspace.getLeaf(newTab)
-        leaf.openFile(file)
+        void leaf.openFile(file)
     }
 
     function handleMouseClick(e: MouseEvent, file: TFile): void{
-        if ((e.target as HTMLElement).classList.contains('home-tab-file-item-remove_btn')) return
+        if ((e.target as HTMLElement).closest('.home-tab-file-item-remove-btn')) return
         else if(e.button != 2){
             handleFileOpening(file, Keymap.isModEvent(e))
         }
@@ -33,39 +40,21 @@
 </script>
 
 <div class="home-tab-file-item" class:use-accent-color="{pluginSettings.selectionHighlight === 'accentColor'}"
-    on:mousedown|preventDefault="{e => handleMouseClick(e, file)}">
+    role="button" tabindex="0"
+    on:mousedown|preventDefault="{e => handleMouseClick(e, file)}"
+    on:keydown={(e) => { if (e.key === 'Enter') handleFileOpening(file, Keymap.isModEvent(e)) }}>
     
-    <div class="home-tab-file-item-remove_btn" aria-label="File options"
+    <button class="home-tab-file-item-remove-btn" aria-label="File options"
+        on:mousedown|stopPropagation
         on:click={(e) => {
             contextualMenu.showAtMouseEvent(e)
             dispatch('itemMenu', {file: file})
             }}>
-        <MoreHorizontal strokeWidth={1} width={24} height={24} class='svg-icon lucide-x'/>
-    </div>
+        <ObsidianIcon icon="more-horizontal" />
+    </button>
 
     <div class="home-tab-file-item-preview-icon">
-        {#if customIcon}
-            <svg xmlns="http://www.w3.org/2000/svg"  width="24" height="24" 
-                        viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        stroke-width="1" stroke-linecap="round" stroke-linejoin="round" 
-                        class="lucide-icon lucide lucide-{customIcon}">
-                            {@html getIcon(customIcon)?.innerHTML}
-            </svg>
-        {:else}
-            {#if fileType === 'markdown'}
-                <FileText strokeWidth={1}/>
-            {:else if fileType === 'image'}
-                <FileImage strokeWidth={1}/>
-            {:else if fileType === 'video'}
-                <FileVideo strokeWidth={1}/>
-            {:else if fileType === 'audio'}
-                <FileAudio strokeWidth={1}/>
-            {:else if fileType === 'pdf'}
-                <FilePieChart strokeWidth={1}/>
-            {:else}
-                <File strokeWidth={1}/>
-            {/if}
-        {/if}
+        <ObsidianIcon {icon} />
     </div>
     <div class="home-tab-file-item-name">
         {filename}
@@ -77,7 +66,6 @@
         margin: 5px;
         padding: 5px;
         border-radius: var(--radius-m);
-        /* height: 100px; */
         min-width: 75px;
         max-width: 125px;
 
@@ -99,7 +87,6 @@
     }
 
     .home-tab-file-item-name{
-        /* padding: var(--size-2-3); */
         text-align: center;
         font-size: var(--font-ui-small);
 
@@ -111,14 +98,18 @@
         -webkit-box-orient: vertical;
     }
 
-    .home-tab-file-item-remove_btn{
+    .home-tab-file-item-remove-btn {
         opacity: 0;
         position: absolute;
         top: 4px;
         right: 4px;
+        padding: 0;
+        background: none;
+        box-shadow: none;
     }
 
-    .home-tab-file-item-remove_btn:hover{
+    .home-tab-file-item-remove-btn:hover,
+    .home-tab-file-item-remove-btn:focus-visible {
         opacity: 1;
     }
 </style>

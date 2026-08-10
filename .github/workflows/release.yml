@@ -1,14 +1,9 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: Tag to publish, for example v0.1.2
-        required: true
   push:
     tags:
-      - "v*"
+      - '*.*.*'
 
 permissions:
   contents: write
@@ -16,29 +11,26 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+        uses: actions/checkout@v6
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
+          cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Build plugin
-        run: npm run build
+      - name: Verify release version
+        run: node -e "const manifest = require('./manifest.json'); if (manifest.version !== process.env.GITHUB_REF_NAME) throw new Error('Tag must match manifest version')"
 
-      - name: Publish release assets
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-          files: |
-            manifest.json
-            main.js
-            styles.css
+      - name: Check and build
+        run: npm run check
+
+      - name: Create draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" --draft --title "$GITHUB_REF_NAME" main.js manifest.json styles.css

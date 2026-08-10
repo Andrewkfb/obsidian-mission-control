@@ -4,43 +4,38 @@ import { debounce, Platform, Scope, type App } from 'obsidian'
 import suggesterView from '../ui/suggesterView.svelte'
 import { createPopper, type Instance as PopperInstance } from '@popperjs/core';
 import { get, writable, type Writable } from 'svelte/store';
-import type { SvelteComponent } from 'svelte';
+import type { LegacyComponentType } from 'svelte/legacy';
 
-/**
- * @param containerClass The class of the suggestion list container.
- * @param suggestionClass Class of the suggestion list, if not given will be used the obsidian default 'suggestion'
- * @param additionalClasses Additional suggestion list classes.
- * @param style The style of the suggestion list, usefull to implement variables.
- * @param additionalModalInfo HTMLelement to render under suggestion items.
- */
+export interface Shortcut {
+    hotkey: string
+    action: string
+}
+
 export interface suggesterViewOptions{
     isScrollable?: boolean
     containerClass?: string
     suggestionClass?: string
     additionalClasses?: string
-    style?: string
-    additionalModalInfo?: HTMLElement
-    // additionalComponent?: typeof SvelteComponent
-    // additionalComponentProps?: []
+    shortcuts?: Shortcut[]
 }
 
-interface ISuggester{
-    getSuggestions: Function
-    useSelectedItem: Function
-    getDisplayElementProps: Function
-    scrollSelectedItemIntoView: Function
-    onNoSuggestion: Function
+interface ISuggester<T>{
+    getSuggestions(input: string): T[] | Promise<T[]>
+    useSelectedItem(item: T, middleClick?: boolean): void
+    getDisplayElementProps(suggestion: T): object
+    scrollSelectedItemIntoView(): void
+    onNoSuggestion(): void
 }
 
 export class Suggester<T>{
-    private ISuggester: ISuggester
-    private suggestions: T[]
-    private selectedItemIndex: number
+    private ISuggester: ISuggester<T>
+    private suggestions: T[] = []
+    private selectedItemIndex = 0
     suggestionsContainer: Writable<HTMLElement>
     suggestionsStore: Writable<T[]>
     selectedItemIndexStore: Writable<number>
 
-    constructor(ISuggester: ISuggester, scope: Scope){
+    constructor(ISuggester: ISuggester<T>, scope: Scope){
         this.ISuggester = ISuggester
 
         // Svelte store variables
@@ -99,12 +94,12 @@ export class Suggester<T>{
     }
 }
 
-export abstract class TextInputSuggester<T> implements ISuggester{
+export abstract class TextInputSuggester<T> implements ISuggester<T>{
     protected app: App
     protected inputEl: HTMLInputElement
     
     protected suggestionParentContainer: HTMLElement
-    protected suggestionContainer: HTMLElement
+    protected suggestionContainer!: HTMLElement
     protected suggesterView: suggesterView | undefined
 
     protected scope: Scope
@@ -116,12 +111,10 @@ export abstract class TextInputSuggester<T> implements ISuggester{
     protected onOpen(): void{}
     protected onClose(): void{}
 
-    protected displayedSuggestions: boolean
-    
-    protected closingAnimationTimeout: NodeJS.Timeout
+    protected closingAnimationTimeout: number | undefined
     protected closingAnimationRunning: boolean
 
-    private inputListener: (this: HTMLInputElement, ev: Event) => any
+    private inputListener: EventListener
 
     constructor(app: App, inputEl: HTMLInputElement, suggestionParentContainer: HTMLElement, viewOptions?: suggesterViewOptions, searchDelay?: number){
         this.app = app
@@ -130,7 +123,8 @@ export abstract class TextInputSuggester<T> implements ISuggester{
         
         this.suggester = new Suggester(this, this.scope)
         
-        this.inputListener = searchDelay ? debounce(async () => await this.onInput(), searchDelay , false) : this.onInput.bind(this)
+        const onInput = (): void => { void this.onInput() }
+        this.inputListener = searchDelay ? debounce(onInput, searchDelay, false) : onInput
         this.inputEl.addEventListener('input', this.inputListener)
         this.inputEl.addEventListener('focus', this.inputListener)
         this.inputEl.addEventListener('blur', this.close.bind(this))
@@ -191,7 +185,7 @@ export abstract class TextInputSuggester<T> implements ISuggester{
         // Allow svelte to run the animation, then remove the component(s)
         if(this.suggesterView){
             this.closingAnimationRunning = true
-            this.closingAnimationTimeout = setTimeout(() => {
+            this.closingAnimationTimeout = window.setTimeout(() => {
                 this.suggesterView?.$destroy()
                 this.suggesterView = undefined
                 this.closingAnimationRunning = false
@@ -202,7 +196,7 @@ export abstract class TextInputSuggester<T> implements ISuggester{
         this.onClose()
     }
     abortClosingAnimation(): void{
-        clearTimeout(this.closingAnimationTimeout)
+        if (this.closingAnimationTimeout) window.clearTimeout(this.closingAnimationTimeout)
         this.suggesterView?.$destroy()
         this.suggesterView = undefined
         this.closingAnimationRunning = false
@@ -229,29 +223,24 @@ export abstract class TextInputSuggester<T> implements ISuggester{
 
     abstract getSuggestions(input: string): T[] | Promise<T[]>
     abstract useSelectedItem(item: T, middleClick?: boolean): void
-    abstract getDisplayElementProps(suggestion: T): {}
-    abstract getDisplayElementComponentType(): typeof SvelteComponent
+    abstract getDisplayElementProps(suggestion: T): object
+    abstract getDisplayElementComponentType(): LegacyComponentType
 }
 
 export abstract class PopoverTextInputSuggester<T> extends TextInputSuggester<T>{
-    private popperInstance: PopperInstance
-    private popperWrapper: HTMLElement
+    private popperInstance: PopperInstance | undefined
+    private popperWrapper: HTMLElement | undefined
     
     constructor(app: App, inputEl: HTMLInputElement, viewOptions?: suggesterViewOptions){
         super(app, inputEl, app.dom.appContainerEl, viewOptions)
     }
 
     getContainerEl(): HTMLElement {
-        if(document.contains(this.popperWrapper)) return this.popperWrapper
+        if(this.popperWrapper && document.contains(this.popperWrapper)) return this.popperWrapper
         this.popperWrapper = this.suggestionParentContainer.createDiv('popper-wrapper')
-        // Render element on top of modals
-        this.popperWrapper.style.zIndex = 'var(--layer-menu)' 
-
-        // @ts-ignore
         const isPhone = Platform.isPhone
-        // On phones place popover on bottom of the screen
+        this.popperWrapper.toggleClass('is-phone', isPhone)
         const popperReference = isPhone ? document.body : this.inputEl
-        if(isPhone){this.popperWrapper.style.width = '100%'}
         
         this.popperInstance = createPopper(popperReference, this.popperWrapper, {
             placement: 'bottom-start',
@@ -270,13 +259,13 @@ export abstract class PopoverTextInputSuggester<T> extends TextInputSuggester<T>
         if(this.popperInstance){
             this.popperInstance.destroy()
         }
-        if(document.body.contains(this.popperWrapper)){
+        if(this.popperWrapper && document.body.contains(this.popperWrapper)){
             this.popperWrapper.detach()
         }
     }
 
-    abstract getSuggestions(input: string): T[]
+    abstract getSuggestions(input: string): T[] | Promise<T[]>
     abstract useSelectedItem(item: T): void
-    abstract getDisplayElementProps(suggestion: T): {}
-    abstract getDisplayElementComponentType(): typeof SvelteComponent
+    abstract getDisplayElementProps(suggestion: T): object
+    abstract getDisplayElementComponentType(): LegacyComponentType
 }

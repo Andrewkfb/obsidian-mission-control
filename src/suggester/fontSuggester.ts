@@ -13,15 +13,12 @@ async function loadGetFonts(): Promise<() => Promise<string[]>> {
 }
 
 export default class fontSuggester extends PopoverTextInputSuggester<Fuse.FuseResult<string>>{
-    private fontList: string[]
-    private fuzzySearch: ArrayFuzzySearch
-    private renderFont: boolean | undefined
-
-    constructor(app: App, inputEl: HTMLInputElement, viewOptions?: suggesterViewOptions, renderFont?: boolean,){
+    private fontList: string[] | undefined
+    private fuzzySearch: ArrayFuzzySearch | undefined
+    constructor(app: App, inputEl: HTMLInputElement, viewOptions?: suggesterViewOptions){
         super(app, inputEl, viewOptions)
-        this.renderFont = renderFont
 
-        this.getInstalledFonts().then(fontList => this.fuzzySearch = new ArrayFuzzySearch(fontList))
+        void this.getInstalledFonts().then(fontList => this.fuzzySearch = new ArrayFuzzySearch(fontList))
     }
 
     async getInstalledFonts(): Promise<string[]>{
@@ -32,23 +29,23 @@ export default class fontSuggester extends PopoverTextInputSuggester<Fuse.FuseRe
         return this.fontList
     }
 
-    getSuggestions(input: string): Fuse.FuseResult<string>[] {
+    async getSuggestions(input: string): Promise<Fuse.FuseResult<string>[]> {
+        if (!this.fuzzySearch) this.fuzzySearch = new ArrayFuzzySearch(await this.getInstalledFonts())
         return this.fuzzySearch.filteredSearch(input, 0.25, 15)
     }
 
     useSelectedItem(selectedItem: Fuse.FuseResult<string>): void {
         this.inputEl.value = selectedItem.item.replace(/"/g, ``)
         this.inputEl.trigger("input")
-        this.onInput().then(() => this.close())
+        void this.onInput().then(() => this.close())
     }
 
     getDisplayElementComponentType(): typeof FontSuggestion{
         return FontSuggestion
     }
 
-    getDisplayElementProps(suggestion: Fuse.FuseResult<string>): {renderFont: boolean, suggestionTitle: string}{
+    getDisplayElementProps(suggestion: Fuse.FuseResult<string>): {suggestionTitle: string}{
         return {
-            renderFont: this.renderFont ?? false,
             suggestionTitle: suggestion.item.replace(/"/g, ``),
         }
     }
@@ -58,7 +55,7 @@ export default class fontSuggester extends PopoverTextInputSuggester<Fuse.FuseRe
         // If the input is blank display all installed fonts
         if (!input){
             const suggestions: Fuse.FuseResult<string>[] = []
-            this.fontList.forEach(font => {
+            this.fontList?.forEach(font => {
                 suggestions.push({
                     item: font,
                     refIndex: 0,

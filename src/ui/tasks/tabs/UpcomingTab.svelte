@@ -3,7 +3,9 @@
     import type { Task } from "src/tasks/Task"
     import TaskItem from "../TaskItem.svelte"
     import { createEventDispatcher } from "svelte"
+    import type { App } from "obsidian"
 
+    export let app: App
     export let dashboard: Dashboard
     export let todayISO: string
 
@@ -19,7 +21,7 @@
             <div class="mc-group">
                 <h3 class="mc-group-title">{group.title} <span class="mc-count">{group.tasks.length}</span></h3>
                 {#each group.tasks as task (task.sourcePath + ":" + task.sourceLine)}
-                    <TaskItem {task} {todayISO} on:toggle={(e) => dispatch("toggle", { task: e.detail.task })} />
+                    <TaskItem {app} {task} {todayISO} on:toggle={(e) => dispatch("toggle", { task: e.detail.task })} />
                 {/each}
             </div>
         {/each}

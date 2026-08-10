@@ -2,7 +2,7 @@
 export type TaskStatus = 'open' | 'done' | 'inProgress' | 'cancelled' | 'other'
 
 // Tasks-plugin priority scale. 'normal' = no priority marker.
-export type TaskPriority = 'highest' | 'high' | 'normal' | 'low' | 'lowest'
+export type TaskPriority = 'highest' | 'high' | 'medium' | 'normal' | 'low' | 'lowest'
 
 export interface Task {
     // Source location
@@ -37,9 +37,10 @@ export interface Task {
 export const PRIORITY_ORDER: Record<TaskPriority, number> = {
     highest: 0,
     high: 1,
-    normal: 2,
-    low: 3,
-    lowest: 4,
+    medium: 2,
+    normal: 3,
+    low: 4,
+    lowest: 5,
 }
 
 export function isOpen(task: Task): boolean {

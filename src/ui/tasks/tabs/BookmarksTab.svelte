@@ -2,14 +2,14 @@
     import { App, Menu, TFile } from "obsidian"
     import { IconSelectionModal } from "src/iconSelectionModal"
     import { bookmarkedFiles as bookmarkedFilesStore, pluginSettingsStore } from "src/store"
-    import type { bookmarkedFile, bookmarkedFilesManager } from "src/bookmarkedFiles"
+    import type { BookmarkedFile, BookmarkedFileManager } from "src/bookmarkedFiles"
     import type { HomeTabSettings } from "src/settings"
     import FileDisplayItem from "src/ui/svelteComponents/fileDisplayItem.svelte"
 
     export let app: App
-    export let bookmarkedFileManager: bookmarkedFilesManager
+    export let bookmarkedFileManager: BookmarkedFileManager
 
-    let fileList: bookmarkedFile[] = []
+    let fileList: BookmarkedFile[] = []
     let pluginSettings: HomeTabSettings
 
     $: fileList = $bookmarkedFilesStore ?? []

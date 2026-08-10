@@ -9,10 +9,6 @@ export type SearchBarFilterType = 'fileExtension' | 'fileType' | 'omnisearch' | 
 
 const omnisearchKeys = ['omnisearch', 'omni'] as const
 
-export type OmnisearchFilterKey = typeof omnisearchKeys[number]
-export type ExtensionsearchFilterKey = FileExtension
-export type FileTypesearchFilterKey = FileType
-
 type FilterKeyLookupTable = {[key in SearchBarFilterType]: string[]}
 const filterKeysLookupTable: FilterKeyLookupTable = {
     default: [],
@@ -28,18 +24,18 @@ export type FilterKey = typeof filterKeys[number]
 
 export default class HomeTabSearchBar{
     private app: App
-    private onLoad: Function | undefined
-    public activeFilter: SearchBarFilterType
+    private onLoad?: () => void
+    public activeFilter: SearchBarFilterType = 'default'
     
     protected view: View
     protected plugin: HomeTab
     
-    public fileSuggester: HomeTabFileSuggester | OmnisearchSuggester
+    public fileSuggester!: HomeTabFileSuggester | OmnisearchSuggester
     public activeExtEl: Writable<HTMLElement>
     public searchBarEl: Writable<HTMLInputElement>
     public suggestionContainerEl: Writable<HTMLElement>
 
-    constructor(plugin: HomeTab, view: View, onLoad?: Function) {
+    constructor(plugin: HomeTab, view: View, onLoad?: () => void) {
         this.app = view.app
         this.view = view;
         this.plugin = plugin;
@@ -63,7 +59,7 @@ export default class HomeTabSearchBar{
             this.fileSuggester = new HomeTabFileSuggester(this.plugin.app, this.plugin, this.view, this);
         }
 
-        this.onLoad ? this.onLoad() : null;
+        this.onLoad?.()
     }
 
     public updateActiveSuggester(filterKey: FilterKey){
@@ -80,7 +76,6 @@ export default class HomeTabSearchBar{
         }
 
         filterEl.setText(filter)
-        // const oldFilter = this.activeFilter
         this.activeFilter = filter
 
         switch(filter){

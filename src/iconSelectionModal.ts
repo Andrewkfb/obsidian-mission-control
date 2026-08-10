@@ -20,13 +20,13 @@ export class IconSelectionModal extends Modal{
 
         const iconSetting = new Setting(contentEl)
             .setName('Choose an icon')
-            .setDesc('Accepts any lucide icon id.')
+            .setDesc('Accepts any lucide icon ID.')
 
         let invalidInputIcon: HTMLElement
         iconSetting
             .addExtraButton((button) => {button
                 .setIcon('alert-circle')
-                .setTooltip('The icon id is not valid.')
+                .setTooltip('The icon ID is not valid.')
                 invalidInputIcon = button.extraSettingsEl
                 invalidInputIcon.toggleVisibility(false)
                 invalidInputIcon.addClass('mod-warning')})
@@ -35,17 +35,13 @@ export class IconSelectionModal extends Modal{
             .addSearch((text) => {
                 new iconSuggester(this.app, text.inputEl, {
                     isScrollable: true,
-                    style: `max-height: 200px`}, 
-                    true)
+                    additionalClasses: 'mc-settings-suggester'
+                }, true)
 
                 text
                 .setPlaceholder('Type to start search...')
                 .setValue(this.icon ?? '')
                 .onChange(value => {
-                    // if(value === '' || value == '/'){
-                    //     invalidInputIcon.toggleVisibility(false)
-                    //     return
-                    // }
                     if(lucideIcons.includes(value as LucideIcon)){
                         this.icon = value
                         invalidInputIcon.toggleVisibility(false)
@@ -62,7 +58,6 @@ export class IconSelectionModal extends Modal{
             .addButton((btn) =>
                 btn
                 .setButtonText("Close modal")
-                // .setCta()
                 .onClick(() => {
                     this.close();
                 }))
@@ -71,14 +66,14 @@ export class IconSelectionModal extends Modal{
                 .setButtonText("Set icon")
                 .setCta()
                 .onClick(() => {
-                    this.icon ? this.onSubmit(this.icon as LucideIcon) : null
+                    if (this.icon) this.onSubmit(this.icon as LucideIcon)
                     this.close()
                 }))
     }
 
     onClose(): void {
         this.icon = undefined
-        let { contentEl } = this;
+        const { contentEl } = this;
         contentEl.empty();
     }
 }

@@ -1,64 +1,16 @@
-import { Notice, Plugin, WorkspaceLeaf } from 'obsidian';
-import { EmbeddedHomeTab, HomeTabView, VIEW_TYPE } from 'src/homeView';
+import { Notice, Plugin } from 'obsidian';
+import { HomeTabView, VIEW_TYPE } from 'src/homeView';
 import { HomeTabSettingTab, DEFAULT_SETTINGS, type HomeTabSettings } from './settings'
 import { pluginSettingsStore, bookmarkedFiles } from './store'
 import { RecentFileManager } from './recentFiles';
-import { bookmarkedFilesManager } from './bookmarkedFiles';
+import { BookmarkedFileManager } from './bookmarkedFiles';
 import { TaskIndex } from './tasks/TaskIndex';
 
-declare module 'obsidian'{
-	interface App{
-		internalPlugins: InternalPlugins
-		plugins: Plugins
-		dom: any
-		isMobile: boolean
-	}
-	interface InternalPlugins{
-		getPluginById: Function
-		plugins: {
-			bookmarks: BookmarksPlugin
-		}
-	}
-	interface Plugins{
-		getPlugin: (id: string) => Plugin
-	}
-	interface BookmarksPlugin extends Plugin{
-		instance: {
-			items: BookmarkItem[]
-			getBookmarks: () => BookmarkItem[]
-			removeItem: (item: BookmarkItem) => void
-		}
-	}
-	interface BookmarkItem{
-		type: string,
-		title: string | undefined,
-		path: string
-	}
-	interface config{
-		nativeMenus: boolean
-	}
-	interface Vault{
-		config: config
-	}
-	interface Workspace{
-		createLeafInTabGroup: Function
-	}
-	interface WorkspaceLeaf{
-		rebuildView: Function
-		activeTime: number
-		app: App
-	}
-	interface TFile{
-		deleted: boolean
-	}
-}
-
-export default class HomeTab extends Plugin {
-	settings: HomeTabSettings;
-	recentFileManager: RecentFileManager
-	bookmarkedFileManager: bookmarkedFilesManager
-	taskIndex: TaskIndex
-	activeEmbeddedHomeTabViews: EmbeddedHomeTab[]
+export default class MissionControlPlugin extends Plugin {
+	settings!: HomeTabSettings;
+	recentFileManager!: RecentFileManager
+	bookmarkedFileManager?: BookmarkedFileManager
+	taskIndex!: TaskIndex
 	
 	async onload() {
 		await this.loadSettings()
@@ -66,77 +18,78 @@ export default class HomeTab extends Plugin {
 		this.registerView(VIEW_TYPE, (leaf) => new HomeTabView(leaf, this))
 
 		this.registerEvent(this.app.workspace.on('layout-change', () => this.onLayoutChange()))
-		this.registerEvent(this.app.workspace.on('active-leaf-change', (leaf: WorkspaceLeaf) => {
-			if(leaf.view instanceof HomeTabView) leaf.view.searchBar.focusSearchbar()
+		this.registerEvent(this.app.workspace.on('active-leaf-change', (leaf) => {
+			if(leaf?.view instanceof HomeTabView) leaf.view.searchBar.focusSearchbar()
 		}))
 
-		this.addRibbonIcon('home', 'Mission Control', () => this.activateView(false, true))
+		this.addRibbonIcon('home', 'Mission control', () => this.activateView(false, true))
 
 		pluginSettingsStore.set(this.settings)
-		this.activeEmbeddedHomeTabViews = []
-
-		this.recentFileManager = new RecentFileManager(app, this)
+		this.recentFileManager = new RecentFileManager(this.app, this)
 		this.recentFileManager.load()
 
-		this.taskIndex = new TaskIndex(app, this)
+		this.taskIndex = new TaskIndex(this.app, this)
 		this.taskIndex.load()
 
 		this.addCommand({
-			id: 'open-new-mission-control-tab',
-			name: 'Open new Mission Control tab',
+			id: 'open-new-tab',
+			name: 'Open new tab',
 			callback: () => this.activateView(false, true)})
 		this.addCommand({
-			id: 'open-mission-control-tab',
-			name: 'Replace current tab with Mission Control',
+			id: 'replace-current-tab',
+			name: 'Replace current tab',
 			callback: () => this.activateView(true)})
 
 		this.app.workspace.onLayoutReady(() => {
 			if(this.app.internalPlugins.getPluginById('bookmarks')){
-				this.bookmarkedFileManager = new bookmarkedFilesManager(app, this, bookmarkedFiles)
+				this.bookmarkedFileManager = new BookmarkedFileManager(this.app, this, bookmarkedFiles)
 				this.bookmarkedFileManager.load()
 			}
 
 			if(this.settings.omnisearch && !this.app.plugins.getPlugin('omnisearch') && !this.settings.notifiedOmnisearchMissing){
-				new Notice('Mission Control: install Omnisearch for full-text search. Fuzzy fallback active.', 8000)
+				new Notice('Mission control: install omnisearch for full-text search. Fuzzy fallback active.', 8000)
 				this.settings.notifiedOmnisearchMissing = true
 				this.saveSettings()
 			}
 
 			if(this.settings.newTabOnStart){
-				const leaves = app.workspace.getLeavesOfType(VIEW_TYPE)
+				const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE)
 				if(leaves.length > 0){
-					app.workspace.revealLeaf(leaves[0])
+					void this.app.workspace.revealLeaf(leaves[0])
 					leaves.forEach((leaf, index) => { if(index > 0) leaf.detach() })
 				} else {
 					this.activateView(false, true)
 				}
 				if(this.settings.closePreviousSessionTabs){
 					const leafTypes: string[] = []
-					app.workspace.iterateRootLeaves((leaf) => {
+					this.app.workspace.iterateRootLeaves((leaf) => {
 						const t = leaf.view.getViewType()
 						if(!leafTypes.includes(t) && t !== VIEW_TYPE) leafTypes.push(t)
 					})
-					leafTypes.forEach((type) => app.workspace.detachLeavesOfType(type))
+					leafTypes.forEach((type) => this.app.workspace.detachLeavesOfType(type))
 				}
 			}
 		})
 	}
 
 	onunload(): void {
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE)
-		this.activeEmbeddedHomeTabViews?.forEach(view => view.unload())
 		this.recentFileManager?.unload()
-		this.bookmarkedFileManager?.unload()   // only assigned when Bookmarks core plugin is on
+		this.bookmarkedFileManager?.unload()
 		this.taskIndex?.unload()
 	}
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData())
+		const saved = await this.loadData() as Partial<HomeTabSettings> | null
+		this.settings = {
+			...DEFAULT_SETTINGS,
+			...saved,
+			logo: { ...DEFAULT_SETTINGS.logo, ...saved?.logo },
+		}
 	}
 
-	async saveSettings(): Promise<void> {
-		await this.saveData(this.settings)
-		pluginSettingsStore.update(() => this.settings)
+	saveSettings(): void {
+		pluginSettingsStore.set(this.settings)
+		void this.saveData(this.settings)
 	}
 
 	private onLayoutChange(): void{
@@ -146,21 +99,21 @@ export default class HomeTab extends Plugin {
 		// previously-active leaf rather than the newly-created empty one.
 		this.app.workspace.iterateRootLeaves((leaf) => {
 			if(leaf.getViewState().type === 'empty'){
-				leaf.setViewState({ type: VIEW_TYPE })
+				void leaf.setViewState({ type: VIEW_TYPE })
 			}
 		})
 	}
 
 	public activateView(overrideView?: boolean, openNewTab?: boolean):void {
 		if(openNewTab){
-			const leaf = app.workspace.getLeaf('tab')
-			leaf.setViewState({ type: VIEW_TYPE })
-			app.workspace.revealLeaf(leaf)
+			const leaf = this.app.workspace.getLeaf('tab')
+			void leaf.setViewState({ type: VIEW_TYPE })
+			void this.app.workspace.revealLeaf(leaf)
 			return
 		}
-		const leaf = app.workspace.getMostRecentLeaf()
+		const leaf = this.app.workspace.getMostRecentLeaf()
 		if(leaf && (overrideView || leaf.getViewState().type === 'empty')){
-			leaf.setViewState({ type: VIEW_TYPE })
+			void leaf.setViewState({ type: VIEW_TYPE })
 		}
 	}
 

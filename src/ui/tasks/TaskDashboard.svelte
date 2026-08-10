@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Notice } from "obsidian"
+    import { Notice, type App } from "obsidian"
     import { onMount, type ComponentType } from "svelte"
     import { tasks as tasksStore, pluginSettingsStore, noteTagsByPath } from "src/store"
     import { buildDashboard, type Dashboard, type ProjectSummary } from "src/tasks/grouping"
@@ -10,6 +10,7 @@
     import TodayTab from "./tabs/TodayTab.svelte"
     import UpcomingTab from "./tabs/UpcomingTab.svelte"
     import ProjectsTab from "./tabs/ProjectsTab.svelte"
+    import RecurringTab from "./tabs/RecurringTab.svelte"
     import BookmarksTab from "./tabs/BookmarksTab.svelte"
     import RecentFilesTab from "./tabs/RecentFilesTab.svelte"
     import InboxTab from "./tabs/InboxTab.svelte"
@@ -30,6 +31,7 @@
         events?: (ctx: TabContext) => Record<string, (e: CustomEvent) => void>
     }
     type TabContext = {
+        app: App
         dashboard: Dashboard
         todayISO: string
         activeProject: string | null
@@ -41,7 +43,7 @@
             label: "Today",
             badge: (d) => d.today.reduce((n, g) => n + g.tasks.length, 0),
             component: TodayTab,
-            props: (ctx) => ({ dashboard: ctx.dashboard, todayISO: ctx.todayISO, activeProject: ctx.activeProject }),
+            props: (ctx) => ({ app: ctx.app, dashboard: ctx.dashboard, todayISO: ctx.todayISO, activeProject: ctx.activeProject }),
             events: () => ({
                 toggle: (e) => handleToggle(e.detail.task),
                 clearProject: () => (activeProject = null),
@@ -52,15 +54,23 @@
             label: "Upcoming",
             badge: (d) => d.upcoming.reduce((n, g) => n + g.tasks.length, 0),
             component: UpcomingTab,
-            props: (ctx) => ({ dashboard: ctx.dashboard, todayISO: ctx.todayISO }),
+            props: (ctx) => ({ app: ctx.app, dashboard: ctx.dashboard, todayISO: ctx.todayISO }),
             events: () => ({ toggle: (e) => handleToggle(e.detail.task) }),
         },
         {
             id: "projects",
             label: "Projects",
             component: ProjectsTab,
-            props: (ctx) => ({ dashboard: ctx.dashboard, activeProject: ctx.activeProject }),
+            props: (ctx) => ({ app: ctx.app, dashboard: ctx.dashboard, activeProject: ctx.activeProject }),
             events: () => ({ selectProject: (e) => selectProject(e.detail.project) }),
+        },
+        {
+            id: "recurring",
+            label: "Recurring",
+            badge: (d) => d.recurring.length,
+            component: RecurringTab,
+            props: (ctx) => ({ app: ctx.app, dashboard: ctx.dashboard, todayISO: ctx.todayISO }),
+            events: () => ({ toggle: (e) => handleToggle(e.detail.task) }),
         },
         {
             id: "inbox",
@@ -172,15 +182,14 @@
         upcomingDays: $pluginSettingsStore?.upcomingDays ?? 7,
         showCompleted: $pluginSettingsStore?.showCompletedTasks ?? false,
     })
-    $: ctx = { dashboard, todayISO, activeProject } as TabContext
+    $: ctx = { app: plugin.app, dashboard, todayISO, activeProject } as TabContext
     $: activeTab = visibleTabs.find((t) => t.id === activeTabId) ?? visibleTabs[0]
 
     async function handleToggle(task: Task) {
         try {
-            await toggleComplete(task, app.vault, todayISO)
+            await toggleComplete(task, plugin.app.vault, todayISO)
         } catch (e) {
             new Notice(`Mission Control: could not update task — ${(e as Error).message}`)
-            console.error(e)
         }
     }
 

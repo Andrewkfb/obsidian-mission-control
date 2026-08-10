@@ -19,20 +19,26 @@
 </script>
 
 {#if suggestions && suggestions.length > 0}
-    <div class="{options.containerClass ?? 'suggestion-container popover suggestion-popover'}" 
+    <div class="{options.containerClass ?? 'suggestion-container popover suggestion-popover'}"
+        role="presentation"
         on:mousedown="{(e) => e.preventDefault()}"
         transition:slide={{duration:200, easing: quintOut}}>
         <div class="{options.suggestionClass ?? 'suggestion'} {options.additionalClasses ?? ''}" class:scrollable="{options.isScrollable}"
-            style="{options.style ?? ''}" bind:this={$suggestionWrapper}>
+            bind:this={$suggestionWrapper}>
             {#each suggestions as suggestion, index (suggestion)}
                 <svelte:component this={textInputSuggester.getDisplayElementComponentType()}
                                 {index} {suggestion} {textInputSuggester} {selectedItemIndex}
                                 {... textInputSuggester.getDisplayElementProps(suggestion)}/>
             {/each}
         </div>
-        {#if options.additionalModalInfo}
-            <div class="suggester-additional-info">
-                {@html options.additionalModalInfo.outerHTML}
+        {#if options.shortcuts}
+            <div class="suggester-additional-info home-tab-hotkey-suggestions">
+                {#each options.shortcuts as shortcut}
+                    <div class="prompt-instruction">
+                        <span class="prompt-instruction-command">{shortcut.hotkey}</span>
+                        <span>{shortcut.action}</span>
+                    </div>
+                {/each}
             </div>
         {/if}
     </div>

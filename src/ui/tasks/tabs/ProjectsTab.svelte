@@ -1,9 +1,10 @@
 <script lang="ts">
-    import { TFile } from "obsidian"
+    import { TFile, type App } from "obsidian"
     import type { Dashboard, ProjectSummary } from "src/tasks/grouping"
     import { createEventDispatcher } from "svelte"
     import { pluginSettingsStore } from "src/store"
 
+    export let app: App
     export let dashboard: Dashboard
     export let activeProject: string | null
 
@@ -11,14 +12,14 @@
 
     function openProject(p: ProjectSummary, newTab: boolean) {
         const file = app.vault.getAbstractFileByPath(p.sourcePath)
-        if (file instanceof TFile) app.workspace.getLeaf(newTab).openFile(file)
+        if (file instanceof TFile) void app.workspace.getLeaf(newTab).openFile(file)
     }
 
     function openHeading(e: MouseEvent | KeyboardEvent, p: ProjectSummary, heading: string) {
         e.stopPropagation()
         e.preventDefault()
         // Resolve via the link API so it lands on the heading anchor in the source file.
-        app.workspace.openLinkText(`${p.project}#${heading}`, p.sourcePath, e.ctrlKey || e.metaKey)
+        void app.workspace.openLinkText(`${p.project}#${heading}`, p.sourcePath, e.ctrlKey || e.metaKey)
     }
 </script>
 

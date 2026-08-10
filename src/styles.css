@@ -29,7 +29,7 @@
     border-radius: 0 0 var(--input-radius) var(--input-radius);
 }
 
-.home-tab-searchbar.embedded+.home-tab-suggestion-container, .home-tab-suggestion-container.is-phone{
+.home-tab-suggestion-container.is-phone{
     width: 90%;
 }
 
@@ -41,7 +41,6 @@
 
 .home-tab-suggestion-title{
     display: flex;
-    /* flex-wrap: wrap; */
     word-break: break-word;
 }
 
@@ -98,4 +97,21 @@
 
 .setting-item-info.ultra-compressed{
     width: 20%;
+}
+
+.popper-wrapper {
+    z-index: var(--layer-menu);
+}
+
+.popper-wrapper.is-phone {
+    width: 100%;
+}
+
+.mc-settings-suggester {
+    max-height: 200px;
+}
+
+.mc-font-suggester {
+    width: fit-content;
+    min-width: 200px;
 }

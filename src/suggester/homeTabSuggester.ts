@@ -5,48 +5,33 @@ import type HomeTab from '../main'
 import type HomeTabSearchBar from "src/homeTabSearchbar"
 import { generateSearchFile,  getParentFolderFromPath,  getSearchFiles, getUnresolvedMarkdownFiles } from 'src/utils/getFilesUtils'
 import { TextInputSuggester } from './suggester'
-import { generateHotkeySuggestion } from 'src/utils/htmlUtils'
 import { isValidExtension, type FileExtension, type FileType } from 'src/utils/getFileTypeUtils'
 import { get } from 'svelte/store'
 import HomeTabFileSuggestion from 'src/ui/svelteComponents/homeTabFileSuggestion.svelte'
 
-declare module 'obsidian'{
-    interface MetadataCache{
-        onCleanCache: Function
-    }
-}
-
 export default class HomeTabFileSuggester extends TextInputSuggester<Fuse.FuseResult<SearchFile>>{
-    private files: SearchFile[]
-    private fuzzySearch: FileFuzzySearch
+    private files: SearchFile[] = []
+    private fuzzySearch!: FileFuzzySearch
 
     private view: View
     private plugin: HomeTab
-    private searchBar: HomeTabSearchBar
-
-    private activeFilter: FileType | FileExtension  | null
+    private activeFilter: FileType | FileExtension | null = null
 
     constructor(app: App, plugin: HomeTab, view: View, searchBar: HomeTabSearchBar) {
         super(app, get(searchBar.searchBarEl), get(searchBar.suggestionContainerEl), {
-                // @ts-ignore
                 containerClass: `home-tab-suggestion-container ${Platform.isPhone ? 'is-phone' : ''}`,
                 additionalClasses: `${plugin.settings.selectionHighlight === 'accentColor' ? 'use-accent-color' : ''}`,
-                additionalModalInfo: plugin.settings.showShortcuts ? generateHotkeySuggestion([
+                shortcuts: plugin.settings.showShortcuts ? [
                     {hotkey: '↑↓', action: 'to navigate'},
                     {hotkey: '↵', action: 'to open'},
                     {hotkey: 'shift ↵', action: 'to create'},
                     {hotkey: 'ctrl ↵', action: 'to open in new tab'},
-                    {hotkey: 'esc', action: 'to dismiss'},], 
-                    'home-tab-hotkey-suggestions') : undefined
+                    {hotkey: 'esc', action: 'to dismiss'},
+                ] : undefined
                 }, plugin.settings.searchDelay)
         this.plugin = plugin
         this.view = view
-        this.searchBar = searchBar
-
-        this.app.metadataCache.onCleanCache(() => {
-            this.plugin.settings.markdownOnly ? this.files = this.filterSearchFileArray('markdown', getSearchFiles(this.plugin.settings.unresolvedLinks)) : this.files = getSearchFiles(this.plugin.settings.unresolvedLinks)
-            this.fuzzySearch = new FileFuzzySearch(this.files, { ...DEFAULT_FUSE_OPTIONS, ignoreLocation: true, fieldNormWeight: 1.65, keys: [{name: 'basename', weight: 1.5}, {name: 'aliases', weight: 0.1}] })
-        })
+        this.rebuildSearchIndex()
 
         // Open file in new tab
         this.scope.register(['Mod'], 'Enter', (e) => {
@@ -74,6 +59,17 @@ export default class HomeTabFileSuggester extends TextInputSuggester<Fuse.FuseRe
         this.inputEl.parentElement?.toggleClass('is-active', isActive)
     }
 
+    private rebuildSearchIndex(): void {
+        const files = getSearchFiles(this.app, this.plugin.settings.unresolvedLinks)
+        this.files = this.plugin.settings.markdownOnly ? this.filterSearchFileArray('markdown', files) : files
+        this.fuzzySearch = new FileFuzzySearch(this.files, {
+            ...DEFAULT_FUSE_OPTIONS,
+            ignoreLocation: true,
+            fieldNormWeight: 1.65,
+            keys: [{name: 'basename', weight: 1.5}, {name: 'aliases', weight: 0.1}],
+        })
+    }
+
     onOpen(): void {
         this.updateSearchBarContainerElState(this.suggester.getSuggestions().length > 0 ? true : false)    
     }
@@ -83,54 +79,38 @@ export default class HomeTabFileSuggester extends TextInputSuggester<Fuse.FuseRe
     }
 
     filterSearchFileArray(filterKey: FileType | FileExtension, fileArray: SearchFile[]): SearchFile[]{
-        const arrayToFilter = fileArray
-        return arrayToFilter.filter(file => isValidExtension(filterKey) ? file.extension === filterKey : file.fileType === filterKey)
+        return fileArray.filter(file => isValidExtension(filterKey) ? file.extension === filterKey : file.fileType === filterKey)
     }
 
     updateUnresolvedFiles(){
-        const unresolvedFiles = getUnresolvedMarkdownFiles()
-        let newFiles = false
-        if(this.files){
-            unresolvedFiles.forEach((unresolvedFile) => {
-                if(!this.files.includes(unresolvedFile)){
-                    this.files.push(unresolvedFile)
-                    newFiles = true
-                }
-            })
-            if(newFiles) this.fuzzySearch.updateSearchArray(this.files)
-        }
+        if (!this.plugin.settings.unresolvedLinks) return
+        const unresolvedFiles = getUnresolvedMarkdownFiles(this.app)
+        const knownPaths = new Set(this.files.map(file => file.path))
+        const newFiles = unresolvedFiles.filter(file => !knownPaths.has(file.path))
+        if (newFiles.length === 0) return
+        this.files = [...this.files, ...newFiles]
+        this.fuzzySearch.updateSearchArray(this.files)
     }
 
     updateSearchfilesList(file:TFile, oldPath?: string){
-        this.app.metadataCache.onCleanCache(() => {
-            if(oldPath){
-                this.files.splice(this.files.findIndex((f) => f.path === oldPath),1)
-                this.files.push(generateSearchFile(file))
+        if (oldPath) this.files = this.files.filter(item => item.path !== oldPath)
+        if (file.deleted) {
+            this.files = this.files.filter(item => item.path !== file.path)
+        } else {
+            const updated = generateSearchFile(this.app, file)
+            const index = this.files.findIndex(item => item.path === file.path)
+            if (index === -1) this.files = [...this.files, updated]
+            else if (this.files[index].isUnresolved) {
+                this.files = this.files.map((item, i) => i === index ? updated : item)
             }
-            if(file.deleted){
-                this.files.splice(this.files.findIndex((f) => f.path === file.path),1)
-    
-                // if(isUnresolved({name: file.name, path: file.path, basename: file.basename, extension: file.extension})){
-                //     this.files.push(generateMarkdownUnresolvedFile(file.path))
-                // }
-            }
-            else{
-                const fileIndex = this.files.findIndex((f) => f.path === file.path)
-                if(fileIndex === -1){
-                    this.files.push(generateSearchFile(file))
-                }
-                else if(this.files[fileIndex].isUnresolved){
-                    this.files[fileIndex] = generateSearchFile(file)
-                }
-            }
-            this.fuzzySearch.updateSearchArray(this.files)
-        })
+        }
+        this.fuzzySearch.updateSearchArray(this.files)
     }
 
     onNoSuggestion(): void {
         if(!this.activeFilter || this.activeFilter === 'markdown' || this.activeFilter === 'md'){
             const input = this.inputEl.value
-            if (!!input) {
+            if (input) {
                 this.suggester.setSuggestions([{
                         item: {
                             name: `${input}.md`,
@@ -163,7 +143,7 @@ export default class HomeTabFileSuggester extends TextInputSuggester<Fuse.FuseRe
             this.openFile(selectedItem.item.file, newTab)
         }
         else{
-            this.handleFileCreation(selectedItem.item, newTab)
+            void this.handleFileCreation(selectedItem.item, newTab)
         }
     }
 
@@ -171,7 +151,7 @@ export default class HomeTabFileSuggester extends TextInputSuggester<Fuse.FuseRe
         const nameToDisplay = this.fuzzySearch.getBestMatch(suggestion, this.inputEl.value)
         let filePath: string | undefined = undefined
         if(this.plugin.settings.showPath){
-            filePath = suggestion.item.file ? suggestion.item.file.parent.name : getParentFolderFromPath(suggestion.item.path) // Parent folder
+            filePath = suggestion.item.file?.parent?.name ?? getParentFolderFromPath(suggestion.item.path)
         }
         
         return {
@@ -188,8 +168,8 @@ export default class HomeTabFileSuggester extends TextInputSuggester<Fuse.FuseRe
         let newFile: TFile
         
         if(selectedFile?.isUnresolved){
-            const folderPath = selectedFile.path.replace(selectedFile.name, '')
-            if(!await this.app.vault.adapter.exists(folderPath)){
+            const folderPath = normalizePath(selectedFile.path.replace(selectedFile.name, ''))
+            if(folderPath && !this.app.vault.getFolderByPath(folderPath)){
                 await this.app.vault.createFolder(folderPath)
             }
             newFile = await this.app.vault.create(selectedFile.path, '')
@@ -213,22 +193,21 @@ export default class HomeTabFileSuggester extends TextInputSuggester<Fuse.FuseRe
     }
 
     openFile(file: TFile, newTab?: boolean): void{
-        // TODO Check if file is already open
         if(newTab){
-            this.app.workspace.createLeafInTabGroup().openFile(file)
-            // this.inputEl.value = ''
+            void this.app.workspace.createLeafInTabGroup().openFile(file)
         }
         else{
-            this.view.leaf.openFile(file);
+            void this.view.leaf.openFile(file)
         }
     }
 
     setFileFilter(filterKey: FileType | FileExtension): void{
         this.activeFilter = filterKey
         
-        this.app.metadataCache.onCleanCache(() => {
-            this.fuzzySearch.updateSearchArray(this.filterSearchFileArray(filterKey, this.plugin.settings.markdownOnly ? getSearchFiles(this.plugin.settings.unresolvedLinks) : this.files))
-        })
+        const files = this.plugin.settings.markdownOnly
+            ? this.filterSearchFileArray('markdown', getSearchFiles(this.app, this.plugin.settings.unresolvedLinks))
+            : this.files
+        this.fuzzySearch.updateSearchArray(this.filterSearchFileArray(filterKey, files))
         
         this.suggester.setSuggestions([]) // Reset search suggestions
         this.close()

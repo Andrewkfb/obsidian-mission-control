@@ -1,14 +1,14 @@
 <script lang="ts">
     import { App, Menu, TFile } from "obsidian"
     import { recentFiles as recentFilesStore, pluginSettingsStore } from "src/store"
-    import type { RecentFileManager, recentFile } from "src/recentFiles"
+    import type { RecentFileManager, RecentFile } from "src/recentFiles"
     import type { HomeTabSettings } from "src/settings"
     import FileDisplayItem from "src/ui/svelteComponents/fileDisplayItem.svelte"
 
     export let app: App
     export let recentFileManager: RecentFileManager
 
-    let fileList: recentFile[] = []
+    let fileList: RecentFile[] = []
     let pluginSettings: HomeTabSettings
 
     $: fileList = $recentFilesStore ?? []

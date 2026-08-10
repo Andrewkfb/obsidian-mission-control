@@ -27,6 +27,10 @@ console.log('TaskParser:')
     assert(t.sourceLine === 3 && t.project === 'Proj', 'carries source location + project')
 }
 {
+    const t = parseTaskLine('- [ ] medium priority 🔼', 'P.md', 0, 'P')!
+    assert(t.priority === 'medium', 'extracts 🔼 medium priority')
+}
+{
     const t = parseTaskLine('  - [x] done thing ✅ 2026-05-20 ➕ 2026-05-01', 'P.md', 0, 'P')!
     assert(t.status === 'done' && t.checked, 'done status for [x]')
     assert(t.done === '2026-05-20', 'extracts ✅ completion date')
@@ -67,7 +71,7 @@ console.log('\ngrouping:')
     const today = '2026-05-28'
     const mk = (over: Partial<Task>, line = '- [ ] x') => {
         const base = parseTaskLine(line, 'A.md', 0, 'A')!
-        return { ...base, ...over } as Task
+        return { ...base, ...over }
     }
     const taskList = [
         mk({ due: addDaysISO(today, -2) }),
@@ -91,6 +95,14 @@ console.log('\ngrouping:')
     assert(!upKeys.includes('unscheduled'), 'upcoming no longer surfaces dateless tasks')
     assert(d.projects.length === 1 && d.projects[0].project === 'A', 'projects rolled up by file')
     assert(d.projects[0].openCount === 8, 'project open count includes all open tasks')
+
+    const completed = mk({ status: 'done', checked: true, due: today }, '- [x] done today')
+    const withCompleted = buildDashboard([...taskList, completed], today, { upcomingDays: 7, showCompleted: true })
+    assert(withCompleted.today.find(g => g.key === 'dueToday')?.tasks.includes(completed) ?? false, 'show completed includes dated completed tasks')
+
+    const recurring = mk({ recurrence: 'every week', due: today })
+    const recurringDashboard = buildDashboard([recurring], today, { upcomingDays: 7, showCompleted: false })
+    assert(recurringDashboard.recurring[0]?.nextDate === addDaysISO(today, 7), 'recurring dashboard computes next occurrence')
 }
 
 // ─── TaskWriter: applyToggleToLine ───────────────────────────────────────────

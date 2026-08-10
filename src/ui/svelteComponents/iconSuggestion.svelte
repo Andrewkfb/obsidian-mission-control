@@ -1,8 +1,8 @@
 <script lang="ts">
     import type Fuse from 'fuse.js'
-	import { getIcon } from 'obsidian';
 	import type { TextInputSuggester } from "src/suggester/suggester";
 	import Suggestion from "./suggestion.svelte";
+	import ObsidianIcon from "./ObsidianIcon.svelte";
 
     export let index: number
     export let textInputSuggester: TextInputSuggester<string>
@@ -18,7 +18,7 @@
     <svelte:fragment slot="suggestion-aux">
         {#if displayIcon}
             <span class="suggestion-flair">
-                {@html getIcon(suggestion.item)?.outerHTML}
+                <ObsidianIcon icon={suggestion.item} size="small" />
             </span>
         {/if}
     </svelte:fragment>

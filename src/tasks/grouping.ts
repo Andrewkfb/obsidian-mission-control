@@ -1,6 +1,7 @@
 import type { Task } from './Task'
 import { PRIORITY_ORDER, isOpen } from './Task'
 import { addDaysISO, daysBetween } from './dates'
+import { computeNextDate } from './recurrence'
 
 export interface TaskGroup {
     key: string
@@ -17,10 +18,18 @@ export interface ProjectSummary {
     headings: string[]
 }
 
+export interface RecurringEntry {
+    task: Task
+    // The date the task would next land on after its current occurrence is
+    // completed, derived from its 🔁 rule. Undefined when the rule can't be parsed.
+    nextDate?: string
+}
+
 export interface Dashboard {
     today: TaskGroup[]
     upcoming: TaskGroup[]
     projects: ProjectSummary[]
+    recurring: RecurringEntry[]
 }
 
 /** Sort by priority, then by due date (earliest first), then text. */
@@ -53,7 +62,7 @@ export function buildDashboard(allTasks: Task[], todayISO: string, opts: { upcom
     const windowEndISO = addDaysISO(todayISO, opts.upcomingDays)
 
     for (const task of tasks) {
-        if (!isOpen(task)) continue
+        if (!opts.showCompleted && !isOpen(task)) continue
 
         // --- Today buckets (each task lands in at most one, by priority) ---
         if (task.due && task.due < todayISO) {
@@ -123,7 +132,18 @@ export function buildDashboard(allTasks: Task[], todayISO: string, opts: { upcom
     }
     const projects = [...projectMap.values()].sort((a, b) => b.openCount - a.openCount || a.project.localeCompare(b.project))
 
-    return { today, upcoming, projects }
+    // --- Recurring: every open task with a 🔁 rule, sorted by its next occurrence ---
+    const recurring: RecurringEntry[] = tasks
+        .filter((task): task is Task & { recurrence: string } => isOpen(task) && !!task.recurrence)
+        .map(task => ({ task, nextDate: computeNextDate(task.recurrence, effectiveDate(task) ?? todayISO) }))
+        .sort((a, b) => {
+            const ad = a.nextDate ?? '9999-99-99'
+            const bd = b.nextDate ?? '9999-99-99'
+            if (ad !== bd) return ad < bd ? -1 : 1
+            return a.task.text.localeCompare(b.task.text)
+        })
+
+    return { today, upcoming, projects, recurring }
 }
 
 /** Whole-day overdue amount for a task, for the "3d overdue" badge. */

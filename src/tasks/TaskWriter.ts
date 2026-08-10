@@ -84,31 +84,23 @@ export async function toggleComplete(task: Task, vault: Vault, todayISO: string)
     const file = vault.getFileByPath(task.sourcePath)
     if (!file) throw new Error(`Mission Control: source file not found: ${task.sourcePath}`)
 
-    const content = await vault.read(file)
-    const lines = content.split('\n')
+    await vault.process(file, content => {
+        const lines = content.split('\n')
+        const line = lines[task.sourceLine]
 
-    const line = lines[task.sourceLine]
-    if (line === undefined) throw new Error(`Mission Control: line ${task.sourceLine} not found in ${task.sourcePath}`)
-
-    // Soft guard: if the line no longer starts with a checkbox, bail gracefully
-    // rather than corrupting the file (user may have edited it since last index).
-    if (!CHECKBOX_RE.test(line)) {
-        console.warn(`Mission Control: line ${task.sourceLine} in ${task.sourcePath} no longer looks like a task — skipping write-back.`)
-        return
-    }
-
-    const toComplete = !task.checked
-    const toggled = applyToggleToLine(line, toComplete, todayISO)
-    lines[task.sourceLine] = toggled
-
-    // Handle recurrence: when completing a recurring task, splice a fresh
-    // open copy with the next date directly above the completed line.
-    if (toComplete && task.recurrence) {
-        const nextLine = buildNextRecurrence(line, task, todayISO)
-        if (nextLine) {
-            lines.splice(task.sourceLine, 0, nextLine)
+        if (line === undefined) throw new Error(`Mission Control: line ${task.sourceLine} not found in ${task.sourcePath}`)
+        if (!CHECKBOX_RE.test(line)) {
+            throw new Error(`Mission Control: line ${task.sourceLine} in ${task.sourcePath} is no longer a task`)
         }
-    }
 
-    await vault.modify(file, lines.join('\n'))
+        const toComplete = !task.checked
+        lines[task.sourceLine] = applyToggleToLine(line, toComplete, todayISO)
+
+        if (toComplete && task.recurrence) {
+            const nextLine = buildNextRecurrence(line, task, todayISO)
+            if (nextLine) lines.splice(task.sourceLine, 0, nextLine)
+        }
+
+        return lines.join('\n')
+    })
 }

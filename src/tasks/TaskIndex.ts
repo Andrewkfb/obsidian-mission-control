@@ -92,7 +92,7 @@ export class TaskIndex extends Component {
 
     private onFileChanged(file: TAbstractFile): void {
         if (file instanceof TFile && file.extension === 'md' && this.inScope(file.path)) {
-            this.indexFile(file).then(() => this.scheduleFlush())
+            void this.indexFile(file).then(() => this.scheduleFlush())
         }
     }
 
@@ -106,7 +106,7 @@ export class TaskIndex extends Component {
         const hadTasks = this.byPath.delete(oldPath)
         const hadTags = this.tagsByPath.delete(oldPath)
         if (file instanceof TFile && file.extension === 'md' && this.inScope(file.path)) {
-            this.indexFile(file).then(() => this.scheduleFlush())
+            void this.indexFile(file).then(() => this.scheduleFlush())
         } else if (hadTasks || hadTags) {
             this.scheduleFlush()
         }

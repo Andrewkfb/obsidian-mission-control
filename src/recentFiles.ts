@@ -4,12 +4,12 @@ import type HomeTab from "./main";
 import type { HomeTabSettings } from "./settings";
 import { recentFiles } from "./store";
 
-export interface recentFile{
+export interface RecentFile {
     file: TFile,
     timestamp: number,
 }
 
-export interface recentFileStore{
+export interface RecentFileStore {
     filepath: string,
     timestamp: number,
 }
@@ -27,89 +27,61 @@ export class RecentFileManager extends Component{
     }
     
     onload(): void {
-        this.registerEvent(this.app.workspace.on('file-open', async (file) => {this.updateRecentFiles(file); await this.storeRecentFiles()})) // Save file to recent files list on opening
-        this.registerEvent(this.app.vault.on('delete', async (file) => {file instanceof TFile ? this.removeRecentFile(file) : null; await this.storeRecentFiles()})) // Remove recent file if deleted
-        this.registerEvent(this.app.vault.on('rename',  (file) => file instanceof TFile ? this.onFileRename() : null)) // Update displayed name on file rename
+        this.registerEvent(this.app.workspace.on('file-open', (file) => {
+            this.updateRecentFiles(file)
+            this.storeRecentFiles()
+        }))
+        this.registerEvent(this.app.vault.on('delete', (file) => {
+            if (file instanceof TFile) this.removeRecentFile(file)
+        }))
+        this.registerEvent(this.app.vault.on('rename', (file) => {
+            if (file instanceof TFile) this.onFileRename()
+        }))
 
         this.loadStoredRecentFiles()
     }
 
     private updateRecentFiles(openedFile: TFile | null): void{
         if(openedFile){
-            recentFiles.update((filesArray) => {
-                // If file is already in the recent files list update only the timestamp
-                if(filesArray.some((item) => item.file === openedFile)){
-                    const itemIndex = filesArray.findIndex((item) => item.file === openedFile)
-                    filesArray[itemIndex].timestamp = Date.now()
-                }
-                // If the recent files list is full replace the last (oldest) item
-                else if(filesArray.length >= this.pluginSettings.maxRecentFiles){
-                    filesArray[filesArray.length - 1] = {
-                        file: openedFile,
-                        timestamp: Date.now()
-                    }
-                }
-                // If there is space and the file is not already in the recent files list add it
-                else{
-                    filesArray.push({
-                        file: openedFile,
-                        timestamp: Date.now(),
-                    })
-                }
-                // Sort files by descending (new to old) opening time
-                return filesArray.sort((a,b) => b.timestamp - a.timestamp)
-            })
+            recentFiles.update(files => [
+                { file: openedFile, timestamp: Date.now() },
+                ...files.filter(item => item.file !== openedFile),
+            ].slice(0, this.pluginSettings.maxRecentFiles))
         }
     }
     
     removeRecentFile(file: TFile): void{
-        recentFiles.update((filesArray) => {
-            filesArray.splice(filesArray.findIndex((recentFile) => recentFile.file == file), 1)
-            return filesArray
-        })
-
+        recentFiles.update(files => files.filter(item => item.file !== file))
         this.storeRecentFiles()
     }
 
-    onNewMaxListLenght(newValue: number){
-        const currentLenght = get(recentFiles).length
-        if(newValue < currentLenght){
-            this.removeRecentFiles(currentLenght - newValue)
-        }
-    }
-
-    private removeRecentFiles(number: number){
-        recentFiles.update((filesArray) => {
-            filesArray.splice(filesArray.length - number, number)
-            return filesArray
-        })
-        
+    onNewMaxListLength(newValue: number): void {
+        if(newValue < get(recentFiles).length) recentFiles.update(files => files.slice(0, newValue))
         this.storeRecentFiles()
     }
 
     private onFileRename(): void{
-        // Trigger refresh of svelte component, not sure if it's the best approach
-        recentFiles.update((filesArray) => filesArray)
+        recentFiles.update(files => [...files])
     }
 
-    private async storeRecentFiles(): Promise<void>{
+    private storeRecentFiles(): void{
         if(this.plugin.settings.storeRecentFile){
-            let storeObj: recentFileStore[] = []
+            const storeObj: RecentFileStore[] = []
             get(recentFiles).forEach((item) => storeObj.push({
                 filepath: item.file.path, // Store only the path instead of the entire TFile instance
                 timestamp: item.timestamp
             }))
             this.plugin.settings.recentFilesStore = storeObj
-            await this.plugin.saveData(this.plugin.settings)
+            this.plugin.saveSettings()
         }
     }
 
     private loadStoredRecentFiles(): void{
         if(this.plugin.settings.storeRecentFile){
-            let filesToLoad: recentFile[] = []
+            const filesToLoad: RecentFile[] = []
             this.app.workspace.onLayoutReady(() => { 
                 this.plugin.settings.recentFilesStore.forEach((item) => {
-                    let file: TAbstractFile | null = this.app.vault.getAbstractFileByPath(item.filepath)
+                    const file: TAbstractFile | null = this.app.vault.getAbstractFileByPath(item.filepath)
                     if(file && file instanceof TFile){
                         filesToLoad.push({
                             file: file,
@@ -117,10 +89,9 @@ export class RecentFileManager extends Component{
                         })
                     }
                 })
-                recentFiles.set(filesToLoad)
+                recentFiles.set(filesToLoad.sort((a, b) => b.timestamp - a.timestamp).slice(0, this.pluginSettings.maxRecentFiles))
             })
         }
     }
 
 }
-

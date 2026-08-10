@@ -3,21 +3,21 @@ import { get, type Writable } from "svelte/store";
 import type HomeTab from "./main";
 import type { LucideIcon } from "./utils/lucideIcons";
 
-export interface bookmarkedFileStore{
+export interface BookmarkedFileStore {
     filepath: string
     iconId: LucideIcon | undefined
 }
-export interface bookmarkedFile{
+export interface BookmarkedFile {
     file: TFile
     iconId: LucideIcon | undefined
 }
 
-export class bookmarkedFilesManager extends Component{
+export class BookmarkedFileManager extends Component {
     private app: App
     private plugin: HomeTab
-    private bookmarkedFilesStore: Writable<bookmarkedFile[]>
+    private bookmarkedFilesStore: Writable<BookmarkedFile[]>
 
-    constructor(app: App, plugin: HomeTab, bookmarkedFilesStore: Writable<bookmarkedFile[]>){
+    constructor(app: App, plugin: HomeTab, bookmarkedFilesStore: Writable<BookmarkedFile[]>){
         super()
 
         this.app = app
@@ -30,14 +30,15 @@ export class bookmarkedFilesManager extends Component{
         this.loadStoredBookmarkedFiles()
         this.updateBookmarkedFiles()
         // Update stored bookmarked files list when a file is bookmarked or unbookmarked
-        this.registerEvent(this.app.internalPlugins.getPluginById('bookmarks').instance.on('changed', () => this.updateBookmarkedFiles()))
+        const bookmarks = this.app.internalPlugins.getPluginById('bookmarks')
+        if (bookmarks) this.registerEvent(bookmarks.instance.on('changed', () => this.updateBookmarkedFiles()))
     }
 
     private updateBookmarkedFiles(): void{
         const bookmarkedFiles = this.getBookmarkedFiles()
         
         this.bookmarkedFilesStore.update((filesArray) => {
-            const updatedArray: bookmarkedFile[] = []
+            const updatedArray: BookmarkedFile[] = []
 
             bookmarkedFiles.forEach((bookmarkedFile) => {
                 updatedArray.push({
@@ -55,9 +56,7 @@ export class bookmarkedFilesManager extends Component{
 
     public updateFileIcon(file: TFile, iconId: LucideIcon): void{
         this.bookmarkedFilesStore.update((filesArray) => {
-            const itemIndex = filesArray.findIndex((item) => item.file === file)
-            filesArray[itemIndex].iconId = iconId
-            return filesArray
+            return filesArray.map(item => item.file === file ? { ...item, iconId } : item)
         })
 
         this.storeBookmarkedFiles()
@@ -65,12 +64,12 @@ export class bookmarkedFilesManager extends Component{
 
     private getBookmarkedFiles(): TFile[]{
         if(this.app.internalPlugins.getPluginById('bookmarks')){
-            const bookmarkedItems = app.internalPlugins.plugins.bookmarks.instance.getBookmarks()
+            const bookmarkedItems = this.app.internalPlugins.plugins.bookmarks.instance.getBookmarks()
             const bookmarkedFiles: TFile[] = []
     
             bookmarkedItems.forEach((item: BookmarkItem) => {
                 if (item.type === 'file'){
-                    const file = app.vault.getAbstractFileByPath(item.path)
+                    const file = this.app.vault.getAbstractFileByPath(item.path)
                     if (file instanceof TFile){
                         bookmarkedFiles.push(file)
                     }
@@ -81,24 +80,24 @@ export class bookmarkedFilesManager extends Component{
         return []
     }
 
-    private async storeBookmarkedFiles(): Promise<void>{
+    private storeBookmarkedFiles(): void{
         if(this.app.internalPlugins.getPluginById('bookmarks')){
-            let storeObj: bookmarkedFileStore[] = []
+            const storeObj: BookmarkedFileStore[] = []
             get(this.bookmarkedFilesStore).forEach((item) => storeObj.push({
                 filepath: item.file.path, // Store only the path instead of the entire TFile instance
                 iconId: item.iconId
             }))
             this.plugin.settings.bookmarkedFileStore = storeObj
-            await this.plugin.saveData(this.plugin.settings)
+            this.plugin.saveSettings()
         }
     }
 
     private loadStoredBookmarkedFiles(): void{
         if(this.app.internalPlugins.getPluginById('bookmarks')){
-            let filesToLoad: bookmarkedFile[] = []
+            const filesToLoad: BookmarkedFile[] = []
             this.app.workspace.onLayoutReady(() => {
                 this.plugin.settings.bookmarkedFileStore.forEach((item) => {
-                    let file: TAbstractFile | null = this.app.vault.getAbstractFileByPath(item.filepath)
+                    const file: TAbstractFile | null = this.app.vault.getAbstractFileByPath(item.filepath)
                     if(file && file instanceof TFile){
                         filesToLoad.push({
                             file: file,
@@ -115,7 +114,7 @@ export class bookmarkedFilesManager extends Component{
         const bookmarksPlugin: BookmarksPlugin | undefined = this.app.internalPlugins.getPluginById('bookmarks')
         if(bookmarksPlugin){
             const item: BookmarkItem | undefined = bookmarksPlugin.instance.getBookmarks().find(item => item.path === file.path)
-            if(item) this.app.internalPlugins.plugins.bookmarks.instance.removeItem(item)
+            if(item) bookmarksPlugin.instance.removeItem(item)
         }
         else{
             new Notice("Bookmarks plugin is not enabled")

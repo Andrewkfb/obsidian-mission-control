@@ -28,7 +28,7 @@ const DV_DATE_ALIASES: Record<string, keyof Pick<Task, 'due' | 'scheduled' | 'st
 const PRIORITY_EMOJI: { emoji: string; priority: TaskPriority }[] = [
     { emoji: '🔺', priority: 'highest' },
     { emoji: '⏫', priority: 'high' },
-    { emoji: '🔼', priority: 'low' },     // Tasks: 🔼 = medium; we fold medium->low side below
+    { emoji: '🔼', priority: 'medium' },
     { emoji: '🔽', priority: 'low' },
     { emoji: '⏬', priority: 'lowest' },
 ]
@@ -93,14 +93,14 @@ export function parseTaskLine(line: string, sourcePath: string, lineNumber: numb
     }
 
     // Recurrence: "🔁 every week" — capture rule text up to the next emoji/field/EOL.
-    const recMatch = body.match(/🔁\s*([^📅⏳🛫✅➕🔺⏫🔼🔽⏬\n]+)/)
+    const recMatch = body.match(/🔁\s*([^📅⏳🛫✅➕🔺⏫🔼🔽⏬\n]+)/u)
     if (recMatch) {
         task.recurrence = recMatch[1].trim()
         body = body.replace(recMatch[0], ' ')
     }
 
     // Dataview inline fields: [key:: value] or (key:: value)
-    const dvRe = /[\[(]\s*([\w-]+)\s*::\s*([^\])]+?)\s*[\])]/g
+    const dvRe = /(?:\[|\()\s*([\w-]+)\s*::\s*([^\])]+?)\s*(?:\]|\))/g
     let dvMatch: RegExpExecArray | null
     const dvToStrip: string[] = []
     while ((dvMatch = dvRe.exec(body)) !== null) {
@@ -112,7 +112,7 @@ export function parseTaskLine(line: string, sourcePath: string, lineNumber: numb
             if (iso) task[dateKey] = iso[1]
         } else if (fieldKey === 'priority' && task.priority === 'normal') {
             const p = value.toLowerCase()
-            if (p === 'highest' || p === 'high' || p === 'low' || p === 'lowest') task.priority = p as TaskPriority
+            if (p === 'highest' || p === 'high' || p === 'medium' || p === 'low' || p === 'lowest') task.priority = p
         } else if (fieldKey === 'repeat' || fieldKey === 'recurrence') {
             if (!task.recurrence) task.recurrence = value
         }

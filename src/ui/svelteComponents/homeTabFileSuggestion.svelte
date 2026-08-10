@@ -1,9 +1,9 @@
 <script lang="ts">
     import type Fuse from 'fuse.js'
-	import { FilePlus, FileQuestion, Forward, Folder } from "lucide-svelte";
     import type { SearchFile } from "src/suggester/fuzzySearch";
 	import type { TextInputSuggester } from "src/suggester/suggester";
 	import Suggestion from './suggestion.svelte';
+    import ObsidianIcon from './ObsidianIcon.svelte';
 
     export let index: number
     export let textInputSuggester: TextInputSuggester<SearchFile>
@@ -33,7 +33,7 @@
             <!-- If the suggestion name is an alias display the actual filename under it -->
             {#if suggestionItem.aliases && suggestionItem.aliases?.includes(nameToDisplay)}
                 <div class="home-tab-suggestion-description">
-                    <Forward size={15} aria-label={'Alias of'}/>
+                    <ObsidianIcon icon="forward" size="small" label="Alias of" />
                     <span>{suggestionItem.basename}</span>
                 </div>
             {/if}
@@ -44,9 +44,9 @@
         {#if !suggestionItem.isCreated}
             <div class="home-tab-suggestion-tip">
                 {#if suggestionItem.isUnresolved}
-                    <FilePlus size={15} aria-label={'Not created yet, select to create'}/>
+                    <ObsidianIcon icon="file-plus" size="small" label="Not created yet, select to create" />
                 {:else}
-                    <FileQuestion size={15} aria-label={'Non exists yet, select to create'}/>
+                    <ObsidianIcon icon="file-question" size="small" label="Does not exist yet, select to create" />
                     <div class="suggestion-hotkey">
                         <span>Enter to create</span>
                     </div>
@@ -56,7 +56,7 @@
         <!-- Add file path -->
         {#if (suggestionItem.isCreated || suggestionItem.isUnresolved) && filePath}
             <div class="home-tab-suggestion-filepath" aria-label="File path">
-                <Folder size={15}/>
+                <ObsidianIcon icon="folder" size="small" />
                 <span class="home-tab-file-path">{filePath}</span>
             </div>
         {/if}

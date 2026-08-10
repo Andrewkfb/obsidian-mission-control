@@ -52,8 +52,8 @@
         aria-label={hasFilter ? `Tag filter (${activeTags.length} active)` : "Tag filter"}
         on:click={() => (open = !open)}
     >
-        <span bind:this={iconEl} class="mc-filter-icon" />
-        {#if hasFilter}<span class="mc-filter-dot" />{/if}
+        <span bind:this={iconEl} class="mc-filter-icon"></span>
+        {#if hasFilter}<span class="mc-filter-dot"></span>{/if}
     </button>
 
     {#if open}

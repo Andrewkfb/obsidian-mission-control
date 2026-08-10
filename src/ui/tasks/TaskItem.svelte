@@ -1,19 +1,21 @@
 <script lang="ts">
     import { createEventDispatcher } from "svelte"
-    import { TFile } from "obsidian"
+    import { TFile, type App } from "obsidian"
     import type { Task } from "src/tasks/Task"
     import { relativeLabel } from "src/tasks/dates"
     import { overdueByDays } from "src/tasks/grouping"
     import { pluginSettingsStore } from "src/store"
 
+    export let app: App
     export let task: Task
     export let todayISO: string
 
     const dispatch = createEventDispatcher<{ toggle: { task: Task } }>()
 
     const PRIORITY_LABEL: Record<string, string> = {
-        highest: "⏫⏫",
+        highest: "🔺",
         high: "⏫",
+        medium: "🔼",
         low: "🔽",
         lowest: "⏬",
         normal: "",
@@ -36,7 +38,7 @@
     function openTask(newTab: boolean) {
         const file = app.vault.getAbstractFileByPath(task.sourcePath)
         if (file instanceof TFile) {
-            app.workspace.getLeaf(newTab).openFile(file, { eState: { line: task.sourceLine } })
+            void app.workspace.getLeaf(newTab).openFile(file, { eState: { line: task.sourceLine } })
         }
     }
 
@@ -63,7 +65,7 @@
     function openLink(e: MouseEvent | KeyboardEvent, target: string) {
         e.stopPropagation()
         e.preventDefault()
-        app.workspace.openLinkText(target, task.sourcePath, e.ctrlKey || e.metaKey)
+        void app.workspace.openLinkText(target, task.sourcePath, e.ctrlKey || e.metaKey)
     }
 
     $: overdueDays = overdueByDays(task, todayISO)

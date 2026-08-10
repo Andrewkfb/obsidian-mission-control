@@ -16,8 +16,12 @@
 
 <div class="{suggestionItemClass ?? 'suggestion-item mod-complex'}" 
     class:is-selected="{selectedItemIndex === index}"
+    role="option"
+    aria-selected={selectedItemIndex === index}
+    tabindex="-1"
     on:mousemove="{() => suggester.setSelectedItemIndex(index)}"
     on:click="{() => textInputSuggester.useSelectedItem(suggester.getSelectedItem())}"
+    on:keydown="{(e) => { if (e.key === 'Enter') textInputSuggester.useSelectedItem(suggester.getSelectedItem()) }}"
     on:auxclick="{(e) => {if(e.button === 1){textInputSuggester.useSelectedItem(suggester.getSelectedItem(), true)}}}">
     <div class="{suggestionContentClass ?? 'suggestion-content'}">
         <div class="{suggestionTitleClass ?? 'suggestion-title'}">

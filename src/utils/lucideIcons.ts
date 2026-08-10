@@ -1,4 +1,3 @@
-// TODO add tags/icon category to improve fuzzy search
 
 export type LucideIcon = typeof lucideIcons[number]
 
