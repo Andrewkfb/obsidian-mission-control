@@ -1,11 +1,10 @@
-import { App, Setting, PluginSettingTab, normalizePath, Platform, TFile, TFolder, type SettingDefinitionItem } from 'obsidian'
+import { App, Setting, PluginSettingTab, normalizePath, TFile, TFolder, type SettingDefinitionItem } from 'obsidian'
 import type HomeTab from './main'
 import iconSuggester from './suggester/iconSuggester'
 import { lucideIcons, type LucideIcon } from './utils/lucideIcons'
 import ImageFileSuggester from './suggester/imageSuggester'
 import cssUnitValidator from './utils/cssUnitValidator'
 import isLink from './utils/isLink'
-import fontSuggester from './suggester/fontSuggester'
 import type { RecentFileStore } from './recentFiles'
 import type { BookmarkedFileStore } from './bookmarkedFiles'
 import { checkFont } from './utils/fontValidator'
@@ -138,7 +137,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
             desc: 'Configure the dashboard, tasks, search, files, and appearance.',
             aliases: SETTING_SEARCH_ALIASES,
             render: setting => {
-                const wrapper = createDiv({ cls: 'mc-settings-definition' })
+                const wrapper = createDiv()
                 setting.settingEl.replaceWith(wrapper)
                 this.renderSettings(wrapper)
                 return () => wrapper.remove()
@@ -155,17 +154,22 @@ export class HomeTabSettingTab extends PluginSettingTab{
 
         new Setting(containerEl).setName('Task management').setHeading()
 
-        const folders = this.app.vault.getAllLoadedFiles()
-            .filter((f): f is TFolder => f instanceof TFolder)
-            .map(f => f.path)
-            .sort((a, b) => a.localeCompare(b))
+        const folders: string[] = []
+        const collectFolders = (folder: TFolder): void => {
+            if (folder.path !== '/') folders.push(folder.path)
+            for (const child of folder.children) {
+                if (child instanceof TFolder) collectFolders(child)
+            }
+        }
+        collectFolders(this.app.vault.getRoot())
+        folders.sort((a, b) => a.localeCompare(b))
 
         new Setting(containerEl)
             .setName('Task source folder')
             .setDesc('Mission control reads tasks from Markdown files in this folder (recursively). No tasks are pulled until a folder is chosen.')
             .addDropdown(dropdown => {
                 dropdown.addOption('', '(None — pick a folder)')
-                for (const path of folders) if (path !== '/') dropdown.addOption(path, path)
+                for (const path of folders) dropdown.addOption(path, path)
                 dropdown.setValue(this.plugin.settings.taskSourceFolder)
                 dropdown.onChange(value => {
                     this.plugin.settings.taskSourceFolder = value
@@ -353,7 +357,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
             .setDesc('Folder whose files are shown in the inbox tab, sorted by most-recently modified.')
             .addDropdown(dropdown => {
                 dropdown.addOption('', '(None — pick a folder)')
-                for (const path of folders) if (path !== '/') dropdown.addOption(path, path)
+                for (const path of folders) dropdown.addOption(path, path)
                 dropdown.setValue(this.plugin.settings.inboxFolder)
                 dropdown.onChange(value => {
                     this.plugin.settings.inboxFolder = value
@@ -530,15 +534,11 @@ export class HomeTabSettingTab extends PluginSettingTab{
 
             titleFontSettings.addSearch((text) => {
                 text.setValue(this.plugin.settings.font ? this.plugin.settings.font.replace(/"/g, ''): '')
-                text.setPlaceholder('Type anything ... ')
-                const suggester: fontSuggester | undefined = Platform.isMobile || Platform.isMacOS ? undefined : new fontSuggester(this.app, text.inputEl, {
-                    isScrollable: true,
-                    additionalClasses: 'mc-settings-suggester mc-font-suggester'
-                })
+                text.setPlaceholder('Enter a font family')
 
-                text.onChange(async (value) => {
+                text.onChange((value) => {
                     value = value.indexOf(' ') >= 0 ? `"${value}"` : value //Restore "" if font name contains whitespaces
-                    if((suggester && (await suggester.getInstalledFonts()).includes(value)) || checkFont(value) ){
+                    if(checkFont(value)){
                         this.plugin.settings.font = value
                         this.plugin.saveSettings()
                         invalidFontIcon.toggleVisibility(false)

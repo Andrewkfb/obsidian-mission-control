@@ -1,4 +1,4 @@
-import { Component, TFile, TAbstractFile, normalizePath, getAllTags, type App } from 'obsidian'
+import { Component, TFile, TFolder, TAbstractFile, normalizePath, getAllTags, type App } from 'obsidian'
 import type HomeTab from '../main'
 import type { Task } from './Task'
 import { parseTasks } from './TaskParser'
@@ -47,7 +47,21 @@ export class TaskIndex extends Component {
     async rebuild(): Promise<void> {
         this.byPath.clear()
         this.tagsByPath.clear()
-        const files = this.app.vault.getMarkdownFiles().filter(f => this.inScope(f.path))
+        const root = this.root
+        const folder = root ? this.app.vault.getFolderByPath(root) : null
+        if (!folder) {
+            this.flush()
+            return
+        }
+
+        const files: TFile[] = []
+        const collectMarkdownFiles = (source: TFolder): void => {
+            for (const child of source.children) {
+                if (child instanceof TFile && child.extension === 'md') files.push(child)
+                else if (child instanceof TFolder) collectMarkdownFiles(child)
+            }
+        }
+        collectMarkdownFiles(folder)
         await Promise.all(files.map(f => this.indexFile(f)))
         this.flush()
     }

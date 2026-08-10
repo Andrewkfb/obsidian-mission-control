@@ -1,15 +1,21 @@
-import { getLinkpath, normalizePath, TFile, type App } from 'obsidian'
+import { getLinkpath, normalizePath, TFile, TFolder, type App } from 'obsidian'
 import type { SearchFile } from '../suggester/fuzzySearch'
 import { getExtensionFromFilename, getFileTypeFromExtension } from './getFileTypeUtils'
 
-export function getImageFiles(app: App): TFile[] {
+function getVaultFiles(app: App): TFile[] {
     const fileList: TFile[] = []
-    app.vault.getFiles().forEach((file) => {
-        if (getFileTypeFromExtension(file.extension) === 'image'){
-            fileList.push(file)
+    const collectFiles = (folder: TFolder): void => {
+        for (const child of folder.children) {
+            if (child instanceof TFile) fileList.push(child)
+            else if (child instanceof TFolder) collectFiles(child)
         }
-    })
+    }
+    collectFiles(app.vault.getRoot())
     return fileList
+}
+
+export function getImageFiles(app: App): TFile[] {
+    return getVaultFiles(app).filter(file => getFileTypeFromExtension(file.extension) === 'image')
 }
 
 export function getFileAliases(app: App, file: TFile): string[]{
@@ -92,12 +98,7 @@ export function getUnresolvedMarkdownFiles(app: App): SearchFile[]{
 }
 
 export function getSearchFiles(app: App, unresolvedLinks?: boolean): SearchFile[]{
-    const files = app.vault.getFiles()
-    const fileList: SearchFile[] = []
-
-    files.forEach(f => {
-        fileList.push(generateSearchFile(app, f))
-    })
+    const fileList = getVaultFiles(app).map(file => generateSearchFile(app, file))
 
     if(unresolvedLinks){
         fileList.push(...getUnresolvedMarkdownFiles(app))
