@@ -1,4 +1,4 @@
-import { App, Setting, PluginSettingTab, normalizePath, Platform, TFile, TFolder } from 'obsidian'
+import { App, Setting, PluginSettingTab, normalizePath, Platform, TFile, TFolder, type SettingDefinitionItem } from 'obsidian'
 import type HomeTab from './main'
 import iconSuggester from './suggester/iconSuggester'
 import { lucideIcons, type LucideIcon } from './utils/lucideIcons'
@@ -112,6 +112,17 @@ export const DEFAULT_SETTINGS: HomeTabSettings = {
     inboxFolder: '01 Inbox',
 }
 
+const SETTING_SEARCH_ALIASES = [
+    'Task source folder', 'Day starts at', 'Upcoming window', 'Show completed tasks',
+    'Show headings', 'Tag filter menu', 'Dashboard tabs', 'Today', 'Upcoming',
+    'Projects', 'Recurring', 'Inbox', 'Bookmarks', 'Recent files', 'Replace new tabs',
+    'Open on startup', 'Close previous session tabs', 'Omnisearch', 'Markdown files',
+    'Uncreated files', 'File path', 'Shortcuts', 'Search results', 'Search delay',
+    'Search excerpt', 'Inbox folder', 'Store recent files', 'Logo', 'Icon color',
+    'Logo scale', 'Title', 'Font', 'Font size', 'Font weight', 'Title color',
+    'Selection highlight',
+]
+
 
 export class HomeTabSettingTab extends PluginSettingTab{
     plugin: HomeTab
@@ -121,8 +132,25 @@ export class HomeTabSettingTab extends PluginSettingTab{
         this.plugin = plugin
     }
 
+    getSettingDefinitions(): SettingDefinitionItem[] {
+        return [{
+            name: 'Mission control settings',
+            desc: 'Configure the dashboard, tasks, search, files, and appearance.',
+            aliases: SETTING_SEARCH_ALIASES,
+            render: setting => {
+                const wrapper = createDiv({ cls: 'mc-settings-definition' })
+                setting.settingEl.replaceWith(wrapper)
+                this.renderSettings(wrapper)
+                return () => wrapper.remove()
+            },
+        }]
+    }
+
     display(): void{
-        const {containerEl} = this
+        this.renderSettings(this.containerEl)
+    }
+
+    private renderSettings(containerEl: HTMLElement): void {
         containerEl.empty()
 
         new Setting(containerEl).setName('Task management').setHeading()
@@ -152,7 +180,6 @@ export class HomeTabSettingTab extends PluginSettingTab{
             .addSlider(slider => slider
                 .setLimits(0, 12, 1)
                 .setValue(this.plugin.settings.dayStartHour)
-                .setDynamicTooltip()
                 .onChange(value => {
                     this.plugin.settings.dayStartHour = value
                     this.plugin.saveSettings()
@@ -165,7 +192,6 @@ export class HomeTabSettingTab extends PluginSettingTab{
             .addSlider(slider => slider
                 .setLimits(1, 30, 1)
                 .setValue(this.plugin.settings.upcomingDays)
-                .setDynamicTooltip()
                 .onChange(value => {
                     this.plugin.settings.upcomingDays = value
                     this.plugin.saveSettings()
@@ -236,7 +262,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
         .setDesc('Focuses an existing mission control tab instead of opening another one.')
         .addToggle(toggle => toggle
             .setValue(this.plugin.settings.newTabOnStart)
-            .onChange(value => {this.plugin.settings.newTabOnStart = value; this.plugin.saveSettings(); this.display()}))
+            .onChange(value => {this.plugin.settings.newTabOnStart = value; this.plugin.saveSettings(); this.redraw()}))
 
         if(this.plugin.settings.newTabOnStart){
             new Setting(containerEl)
@@ -254,7 +280,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
                 .setDesc('Set omnisearch as the default search engine.')
                 .addToggle(toggle => toggle
                     .setValue(this.plugin.settings.omnisearch)
-                    .onChange(value => {this.plugin.settings.omnisearch = value; this.plugin.saveSettings(); this.display(); this.plugin.refreshOpenViews()}))
+                    .onChange(value => {this.plugin.settings.omnisearch = value; this.plugin.saveSettings(); this.redraw(); this.plugin.refreshOpenViews()}))
         }
         if(!this.plugin.settings.omnisearch){
             new Setting(containerEl)
@@ -295,7 +321,6 @@ export class HomeTabSettingTab extends PluginSettingTab{
             .addSlider((slider) => slider
                 .setLimits(1, 25, 1)
                 .setValue(this.plugin.settings.maxResults)
-                .setDynamicTooltip()
                 .onChange((value) => {this.plugin.settings.maxResults = value; this.plugin.saveSettings()}))
             .then((settingEl) => this.addResetButton(settingEl, 'maxResults'))
 
@@ -305,7 +330,6 @@ export class HomeTabSettingTab extends PluginSettingTab{
             .addSlider((slider) => slider
                 .setLimits(0, 500, 10)
                 .setValue(this.plugin.settings.searchDelay)
-                .setDynamicTooltip()
                 .onChange((value) => {this.plugin.settings.searchDelay = value; this.plugin.saveSettings(); this.plugin.refreshOpenViews()}))
             .then((settingEl) => this.addResetButton(settingEl, 'searchDelay'))
 
@@ -351,7 +375,6 @@ export class HomeTabSettingTab extends PluginSettingTab{
             .addSlider((slider) => slider
                 .setValue(this.plugin.settings.maxRecentFiles)
                 .setLimits(1, 25, 1)
-                .setDynamicTooltip()
                 .onChange((value) => {this.plugin.recentFileManager.onNewMaxListLength(value); this.plugin.settings.maxRecentFiles = value; this.plugin.saveSettings()}))
             .then((settingEl) => this.addResetButton(settingEl, 'maxRecentFiles'))
 
@@ -442,7 +465,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
                 .addOption('lucideIcon', 'Lucide icon')
                 .addOption('none', 'Empty')
                 .setValue(this.plugin.settings.logoType)
-                .onChange((value) => {this.plugin.settings.logoType = value as LogoChoiches; this.plugin.saveSettings(); this.display()}))
+                .onChange((value) => {this.plugin.settings.logoType = value as LogoChoiches; this.plugin.saveSettings(); this.redraw()}))
             .then((settingEl) => this.addResetButton(settingEl, 'logoType'))
         
         if(this.plugin.settings.logoType === 'lucideIcon'){
@@ -462,7 +485,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
                     .addOption('accentColor', 'Accent color')
                     .addOption('custom', 'Custom')
                     .setValue(this.plugin.settings.iconColorType)
-                    .onChange((value) => {this.plugin.settings.iconColorType = value as ColorChoices; this.plugin.saveSettings(); this.display()}))
+                    .onChange((value) => {this.plugin.settings.iconColorType = value as ColorChoices; this.plugin.saveSettings(); this.redraw()}))
             .then((settingEl) => this.addResetButton(settingEl, 'iconColorType'))
         }
         
@@ -470,7 +493,6 @@ export class HomeTabSettingTab extends PluginSettingTab{
             .setName('Logo scale')
             .setDesc('Set the logo dimensions relative to the title font size.')
             .addSlider((slider) => slider
-                .setDynamicTooltip()
                 .setLimits(0.3,3, 0.1)
                 .setValue(this.plugin.settings.logoScale)
                 .onChange((value) => {
@@ -539,7 +561,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
                 .onChange((value) => {
                     this.plugin.settings.customFont = value as FontChoiches
                     this.plugin.saveSettings()
-                    this.display()
+                    this.redraw()
                 })
             )
         this.addResetButton(titleFontSettings, 'customFont')
@@ -573,7 +595,6 @@ export class HomeTabSettingTab extends PluginSettingTab{
             .setName('Title font weight')
             .addSlider((slider) => slider
                 .setLimits(100, 900, 100)
-                .setDynamicTooltip()
                 .setValue(this.plugin.settings.fontWeight)
                 .onChange((value) => {
                     this.plugin.settings.fontWeight = value
@@ -596,7 +617,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
                 .addOption('accentColor', 'Accent color')
                 .addOption('custom', 'Custom')
                 .setValue(this.plugin.settings.fontColorType)
-                .onChange((value) => {this.plugin.settings.fontColorType = value as ColorChoices; this.plugin.saveSettings(); this.display()}))
+                .onChange((value) => {this.plugin.settings.fontColorType = value as ColorChoices; this.plugin.saveSettings(); this.redraw()}))
             .then((settingEl) => this.addResetButton(settingEl, 'fontColorType'))
     
         new Setting(containerEl)
@@ -656,7 +677,13 @@ export class HomeTabSettingTab extends PluginSettingTab{
                     .onClick(() => {
                         this.plugin.settings[settingKey] = DEFAULT_SETTINGS[settingKey]
                         this.plugin.saveSettings()
-                        if(refreshView){this.display()}
+                        if(refreshView){this.redraw()}
                     }))
+    }
+
+    private redraw(): void {
+        const { update } = this as unknown as { update?: () => void }
+        if (update) update.call(this)
+        else this.renderSettings(this.containerEl)
     }
 }

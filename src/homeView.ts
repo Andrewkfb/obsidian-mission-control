@@ -2,12 +2,13 @@ import { FileView, WorkspaceLeaf } from "obsidian";
 import type HomeTab from "./main";
 import Homepage from './ui/homepage.svelte'
 import HomeTabSearchBar from "./homeTabSearchbar";
+import { mount, unmount } from 'svelte'
 
 export const VIEW_TYPE = "mission-control-view";
 
 export class HomeTabView extends FileView{
     plugin: HomeTab
-    homepage!: Homepage
+    homepage?: Record<string, unknown>
     searchBar: HomeTabSearchBar
     constructor(leaf: WorkspaceLeaf, plugin: HomeTab) {
         super(leaf);
@@ -29,7 +30,7 @@ export class HomeTabView extends FileView{
     }
 
     async onOpen(): Promise<void> {
-        this.homepage = new Homepage({
+        this.homepage = mount(Homepage, {
             target: this.contentEl,
             props:{
                 plugin: this.plugin,
@@ -42,6 +43,7 @@ export class HomeTabView extends FileView{
 
     async onClose(): Promise<void>{
         this.searchBar.fileSuggester.close()
-        this.homepage.$destroy();
+        if (this.homepage) await unmount(this.homepage)
+        this.homepage = undefined
     }
 } 

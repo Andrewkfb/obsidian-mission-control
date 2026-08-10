@@ -3,8 +3,8 @@
 import { debounce, Platform, Scope, type App } from 'obsidian'
 import suggesterView from '../ui/suggesterView.svelte'
 import { createPopper, type Instance as PopperInstance } from '@popperjs/core';
+import { mount, unmount, type Component } from 'svelte'
 import { get, writable, type Writable } from 'svelte/store';
-import type { LegacyComponentType } from 'svelte/legacy';
 
 export interface Shortcut {
     hotkey: string
@@ -100,7 +100,7 @@ export abstract class TextInputSuggester<T> implements ISuggester<T>{
     
     protected suggestionParentContainer: HTMLElement
     protected suggestionContainer!: HTMLElement
-    protected suggesterView: suggesterView | undefined
+    protected suggesterView?: Record<string, unknown>
 
     protected scope: Scope
     protected viewOptions: suggesterViewOptions
@@ -164,7 +164,7 @@ export abstract class TextInputSuggester<T> implements ISuggester<T>{
 
         this.app.keymap.pushScope(this.scope)
 
-        this.suggesterView = new suggesterView({
+        this.suggesterView = mount(suggesterView, {
             target: this.suggestionContainer,
             props:{
                 textInputSuggester: this,
@@ -183,11 +183,13 @@ export abstract class TextInputSuggester<T> implements ISuggester<T>{
         this.suggester.setSuggestions([])
 
         // Allow svelte to run the animation, then remove the component(s)
-        if(this.suggesterView){
+        if(this.suggesterView && !this.closingAnimationRunning){
+            const view = this.suggesterView
             this.closingAnimationRunning = true
             this.closingAnimationTimeout = window.setTimeout(() => {
-                this.suggesterView?.$destroy()
-                this.suggesterView = undefined
+                if (this.suggesterView === view) this.suggesterView = undefined
+                void unmount(view)
+                this.closingAnimationTimeout = undefined
                 this.closingAnimationRunning = false
             }, 200)
         }
@@ -197,8 +199,10 @@ export abstract class TextInputSuggester<T> implements ISuggester<T>{
     }
     abortClosingAnimation(): void{
         if (this.closingAnimationTimeout) window.clearTimeout(this.closingAnimationTimeout)
-        this.suggesterView?.$destroy()
+        this.closingAnimationTimeout = undefined
+        const view = this.suggesterView
         this.suggesterView = undefined
+        if (view) void unmount(view)
         this.closingAnimationRunning = false
     }
     
@@ -224,7 +228,7 @@ export abstract class TextInputSuggester<T> implements ISuggester<T>{
     abstract getSuggestions(input: string): T[] | Promise<T[]>
     abstract useSelectedItem(item: T, middleClick?: boolean): void
     abstract getDisplayElementProps(suggestion: T): object
-    abstract getDisplayElementComponentType(): LegacyComponentType
+    abstract getDisplayElementComponentType(): Component
 }
 
 export abstract class PopoverTextInputSuggester<T> extends TextInputSuggester<T>{
@@ -267,5 +271,5 @@ export abstract class PopoverTextInputSuggester<T> extends TextInputSuggester<T>
     abstract getSuggestions(input: string): T[] | Promise<T[]>
     abstract useSelectedItem(item: T): void
     abstract getDisplayElementProps(suggestion: T): object
-    abstract getDisplayElementComponentType(): LegacyComponentType
+    abstract getDisplayElementComponentType(): Component
 }

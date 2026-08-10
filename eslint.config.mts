@@ -32,12 +32,4 @@ export default defineConfig(
 		languageOptions: { globals: { ...globals.node } },
 		rules: { 'obsidianmd/rule-custom-message': 'off' },
 	},
-	{
-		files: ['src/homeView.ts', 'src/suggester/suggester.ts'],
-		rules: { '@typescript-eslint/no-deprecated': 'off' },
-	},
-	{
-		files: ['src/settings.ts'],
-		rules: { 'obsidianmd/settings-tab/prefer-setting-definitions': 'off' },
-	},
 )
