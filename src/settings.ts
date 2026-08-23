@@ -137,10 +137,16 @@ export class HomeTabSettingTab extends PluginSettingTab{
             desc: 'Configure the dashboard, tasks, search, files, and appearance.',
             aliases: SETTING_SEARCH_ALIASES,
             render: setting => {
-                const wrapper = createDiv()
-                setting.settingEl.replaceWith(wrapper)
-                this.renderSettings(wrapper)
-                return () => wrapper.remove()
+                // Render inside the row Obsidian owns. Anything appended as a
+                // sibling is discarded: after the render callbacks run, the
+                // framework resets the group's children to the definition's own
+                // settingEl, so a replaced/extra wrapper is removed again and the
+                // tab comes up empty. `display: contents` keeps the row from
+                // imposing its own flex layout on the settings inside it.
+                const container = setting.settingEl
+                container.addClass('mc-settings-definition')
+                this.renderSettings(container)
+                return () => container.empty()
             },
         }]
     }
