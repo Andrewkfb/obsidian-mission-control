@@ -99,10 +99,6 @@
     width: 20%;
 }
 
-.mc-settings-definition {
-    display: contents;
-}
-
 .popper-wrapper {
     z-index: var(--layer-menu);
 }

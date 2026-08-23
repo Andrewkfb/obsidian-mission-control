@@ -141,9 +141,11 @@ export class HomeTabSettingTab extends PluginSettingTab{
                 // sibling is discarded: after the render callbacks run, the
                 // framework resets the group's children to the definition's own
                 // settingEl, so a replaced/extra wrapper is removed again and the
-                // tab comes up empty. `display: contents` keeps the row from
-                // imposing its own flex layout on the settings inside it.
+                // tab comes up empty. Dropping the setting-item class turns the
+                // row into a plain block container, so its flex layout, padding
+                // and divider do not apply to the settings rendered inside it.
                 const container = setting.settingEl
+                container.removeClass('setting-item')
                 container.addClass('mc-settings-definition')
                 this.renderSettings(container)
                 return () => container.empty()
