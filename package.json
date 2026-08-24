@@ -1,6 +1,6 @@
 {
 	"name": "mission-control",
-	"version": "0.2.3",
+	"version": "0.2.4",
 	"description": "Turn a folder into a home-tab dashboard for tasks, projects, recurring work, bookmarks, and recent files.",
 	"main": "main.js",
 	"type": "module",
