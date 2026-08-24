@@ -2,7 +2,7 @@ import { FileView, WorkspaceLeaf } from "obsidian";
 import type HomeTab from "./main";
 import Homepage from './ui/homepage.svelte'
 import HomeTabSearchBar from "./homeTabSearchbar";
-import { mount, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
 
 export const VIEW_TYPE = "mission-control-view";
 
@@ -37,12 +37,16 @@ export class HomeTabView extends FileView{
                 HomeTabSearchBar: this.searchBar
             }
         });
+        // `mount()` defers user effects, so `bind:this` refs (the search input and
+        // its suggestion container) are still undefined here. Flush them before
+        // loading the search bar, which reads those elements synchronously.
+        flushSync()
         this.searchBar.load()
         this.searchBar.focusSearchbar()
     }
 
     async onClose(): Promise<void>{
-        this.searchBar.fileSuggester.close()
+        this.searchBar.fileSuggester?.close()
         if (this.homepage) await unmount(this.homepage)
         this.homepage = undefined
     }

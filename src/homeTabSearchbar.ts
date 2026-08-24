@@ -47,18 +47,24 @@ export default class HomeTabSearchBar{
 
     public focusSearchbar(): void {
         // Set cursor on search bar
-        if (this.searchBarEl)
-            get(this.searchBarEl).focus();
+        get(this.searchBarEl)?.focus();
+    }
+
+    // Omnisearch exposes its API on `window.omnisearch`, which can lag behind the
+    // plugin being enabled. Fall back to fuzzy search instead of throwing.
+    private isOmnisearchAvailable(): boolean {
+        return !!this.app.plugins.getPlugin('omnisearch') && !!window.omnisearch
+    }
+
+    private createDefaultSuggester(): HomeTabFileSuggester | OmnisearchSuggester {
+        if (this.plugin.settings.omnisearch && this.isOmnisearchAvailable()) {
+            return new OmnisearchSuggester(this.plugin.app, this.plugin, this.view, this)
+        }
+        return new HomeTabFileSuggester(this.plugin.app, this.plugin, this.view, this)
     }
 
     public load(): void {
-        if (this.plugin.settings.omnisearch && this.plugin.app.plugins.getPlugin('omnisearch')) {
-            this.fileSuggester = new OmnisearchSuggester(this.plugin.app, this.plugin, this.view, this);
-        }
-        else {
-            this.fileSuggester = new HomeTabFileSuggester(this.plugin.app, this.plugin, this.view, this);
-        }
-
+        this.fileSuggester = this.createDefaultSuggester()
         this.onLoad?.()
     }
 
@@ -81,22 +87,17 @@ export default class HomeTabSearchBar{
         switch(filter){
             case 'default':
                 filterEl.toggleClass('hide', true)
-                if (this.plugin.settings.omnisearch && this.plugin.app.plugins.getPlugin('omnisearch')) {
-                    this.fileSuggester = new OmnisearchSuggester(this.plugin.app, this.plugin, this.view, this);
-                }
-                else {
-                    this.fileSuggester = new HomeTabFileSuggester(this.plugin.app, this.plugin, this.view, this);
-                }
+                this.fileSuggester = this.createDefaultSuggester()
                 this.fileSuggester.setInput('')
                 break;
             case 'omnisearch':
-                if(this.app.plugins.getPlugin('omnisearch')){
+                if(this.isOmnisearchAvailable()){
                     filterEl.toggleClass('hide', false)
                     this.fileSuggester = new OmnisearchSuggester(this.plugin.app, this.plugin, this.view, this)
                     this.fileSuggester.setInput('')
                 }
                 else{
-                    new Notice('Omnisearch plugins is not enabled.')
+                    new Notice('Omnisearch is not available.')
                     this.updateActiveSuggester('default')
                 }
                 break;
