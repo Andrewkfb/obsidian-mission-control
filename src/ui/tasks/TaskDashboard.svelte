@@ -234,11 +234,14 @@
     const ctx = $derived({ app: plugin.app, dashboard, todayISO, activeProject } as TabContext)
     const activeTab = $derived(visibleTabs.find((t) => t.id === activeTabId) ?? visibleTabs[0])
 
-    async function handleToggle(task: Task) {
+    /** Returns whether the write landed, so the row can revert its optimistic state. */
+    async function handleToggle(task: Task): Promise<boolean> {
         try {
             await toggleComplete(task, plugin.app.vault, todayISO)
+            return true
         } catch (e) {
             new Notice(`Mission Control: could not update task — ${(e as Error).message}`)
+            return false
         }
     }
 

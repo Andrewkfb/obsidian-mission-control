@@ -9,7 +9,7 @@
         app: App
         dashboard: Dashboard
         todayISO: string
-        ontoggle: (task: Task) => void
+        ontoggle: (task: Task) => Promise<boolean>
     }
 
     let { app, dashboard, todayISO, ontoggle }: Props = $props()

@@ -62,6 +62,8 @@ npm run build
 npm run check     # lint + test + typecheck + build
 ```
 
+Component styles are extracted into `styles.css` at build time rather than injected from JS, so they can be overridden with a CSS snippet.
+
 The UI is written with [Svelte 5 runes](https://svelte.dev/docs/svelte/what-are-runes); the compiler runs with `runes: true`, so legacy syntax is rejected rather than silently compiled in compatibility mode.
 
 Set `VAULT_PLUGIN_DIR` and run `npm run deploy` to copy a production build into a development vault.

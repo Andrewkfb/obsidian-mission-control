@@ -115,15 +115,53 @@ export const DEFAULT_SETTINGS: HomeTabSettings = {
     inboxFolder: '01 Inbox',
 }
 
-const SETTING_SEARCH_ALIASES = [
-    'Task source folder', 'Day starts at', 'Upcoming window', 'Show completed tasks',
-    'Show headings', 'Tag filter menu', 'Dashboard tabs', 'Today', 'Upcoming', 'Backlog',
-    'Projects', 'Recurring', 'Inbox', 'Bookmarks', 'Recent files', 'Replace new tabs',
-    'Open on startup', 'Close previous session tabs', 'Omnisearch', 'Markdown files',
-    'Uncreated files', 'File path', 'Shortcuts', 'Search results', 'Search delay',
-    'Search excerpt', 'Inbox folder', 'Store recent files', 'Logo', 'Icon color',
-    'Logo scale', 'Title', 'Font', 'Font size', 'Font weight', 'Title color',
-    'Selection highlight',
+/**
+ * Every setting and section name, in one place. The settings tab renders from
+ * these and the search aliases are derived from them, so the two cannot drift
+ * apart the way a hand-maintained alias list did.
+ */
+const SETTING = {
+    taskManagement: 'Task management',
+    taskSourceFolder: 'Task source folder',
+    dayStartsAt: 'Day starts at',
+    upcomingWindowDays: 'Upcoming window (days)',
+    showCompletedTasks: 'Show completed tasks',
+    showHeadings: 'Show headings',
+    dashboardTabs: 'Dashboard tabs',
+    replaceNewTabsWithMissionControl: 'Replace new tabs with mission control',
+    openMissionControlOnStartup: 'Open mission control on startup',
+    closePreviousSessionTabsOnStart: 'Close previous session tabs on start',
+    search: 'Search',
+    useOmnisearch: 'Use omnisearch',
+    searchOnlyMarkdownFiles: 'Search only Markdown files',
+    showUncreatedFiles: 'Show uncreated files',
+    showFilePath: 'Show file path',
+    showShortcuts: 'Show shortcuts',
+    searchResults: 'Search results',
+    searchDelay: 'Search delay',
+    showExcerptOmnisearch: 'Show excerpt (omnisearch)',
+    fileDisplay: 'File display',
+    inboxFolder: 'Inbox folder',
+    storeLastRecentFiles: 'Store last recent files',
+    recentFiles: 'Recent files',
+    appearance: 'Appearance',
+    logo: 'Logo',
+    logoIconColor: 'Logo icon color',
+    logoScale: 'Logo scale',
+    title: 'Title',
+    titleFont: 'Title font',
+    titleFontSize: 'Title font size',
+    titleFontWeight: 'Title font weight',
+    titleColor: 'Title color',
+    selectionHighlight: 'Selection highlight',
+    tagFilterMenu: 'Tag filter menu',
+} as const
+
+// Tab labels are their own thing (the dashboard renders them too), so they are
+// appended rather than duplicated above.
+const SETTING_SEARCH_ALIASES: string[] = [
+    ...Object.values(SETTING),
+    'Today', 'Upcoming', 'Backlog', 'Projects', 'Recurring', 'Inbox', 'Bookmarks', 'Recent files',
 ]
 
 
@@ -164,20 +202,34 @@ export class HomeTabSettingTab extends PluginSettingTab{
     private renderSettings(containerEl: HTMLElement): void {
         containerEl.empty()
 
-        new Setting(containerEl).setName('Task management').setHeading()
+        this.renderTaskSettings(containerEl)
+        this.renderDashboardTabSettings(containerEl)
+        this.renderStartupSettings(containerEl)
+        this.renderSearchSettings(containerEl)
+        this.renderFileDisplaySettings(containerEl)
+        this.renderAppearanceSettings(containerEl)
+    }
 
+    /** Every folder path in the vault, sorted — used by the folder pickers. */
+    private vaultFolders(): string[] {
         const folders: string[] = []
-        const collectFolders = (folder: TFolder): void => {
+        const collect = (folder: TFolder): void => {
             if (folder.path !== '/') folders.push(folder.path)
             for (const child of folder.children) {
-                if (child instanceof TFolder) collectFolders(child)
+                if (child instanceof TFolder) collect(child)
             }
         }
-        collectFolders(this.app.vault.getRoot())
-        folders.sort((a, b) => a.localeCompare(b))
+        collect(this.app.vault.getRoot())
+        return folders.sort((a, b) => a.localeCompare(b))
+    }
+
+    private renderTaskSettings(containerEl: HTMLElement): void {
+        new Setting(containerEl).setName(SETTING.taskManagement).setHeading()
+
+        const folders = this.vaultFolders()
 
         new Setting(containerEl)
-            .setName('Task source folder')
+            .setName(SETTING.taskSourceFolder)
             .setDesc('Mission control reads tasks from Markdown files in this folder (recursively). No tasks are pulled until a folder is chosen.')
             .addDropdown(dropdown => {
                 dropdown.addOption('', '(None — pick a folder)')
@@ -191,7 +243,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
             })
 
         new Setting(containerEl)
-            .setName('Day starts at')
+            .setName(SETTING.dayStartsAt)
             .setDesc('Hour (0–23) at which a new day begins. Tasks stay on "today" until this hour, so late-night work still shows the previous day.')
             .addSlider(slider => slider
                 .setLimits(0, 12, 1)
@@ -203,7 +255,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
                 }))
 
         new Setting(containerEl)
-            .setName('Upcoming window (days)')
+            .setName(SETTING.upcomingWindowDays)
             .setDesc('How many days ahead the "next days" group covers in the upcoming pane.')
             .addSlider(slider => slider
                 .setLimits(1, 30, 1)
@@ -215,7 +267,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
                 }))
 
         new Setting(containerEl)
-            .setName('Show completed tasks')
+            .setName(SETTING.showCompletedTasks)
             .setDesc('Include completed tasks in the dashboard.')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.showCompletedTasks)
@@ -226,7 +278,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
                 }))
 
         new Setting(containerEl)
-            .setName('Show headings')
+            .setName(SETTING.showHeadings)
             .setDesc('Display the nearest Markdown heading next to each task and list distinct headings under each project.')
             .addToggle(toggle => toggle
                 .setValue(this.plugin.settings.showHeadings)
@@ -237,8 +289,10 @@ export class HomeTabSettingTab extends PluginSettingTab{
                 }))
 
         this.renderTagFilterWhitelist(containerEl)
+    }
 
-        new Setting(containerEl).setName('Dashboard tabs').setHeading()
+    private renderDashboardTabSettings(containerEl: HTMLElement): void {
+        new Setting(containerEl).setName(SETTING.dashboardTabs).setHeading()
 
         const ALL_TABS: { id: string; label: string; requiresBookmarks?: true }[] = [
             { id: 'today',     label: 'Today' },
@@ -266,16 +320,17 @@ export class HomeTabSettingTab extends PluginSettingTab{
                     })
                 )
         }
+    }
 
-
+    private renderStartupSettings(containerEl: HTMLElement): void {
         new Setting(containerEl)
-        .setName('Replace new tabs with mission control')
+        .setName(SETTING.replaceNewTabsWithMissionControl)
         .addToggle(toggle => toggle
             .setValue(this.plugin.settings.replaceNewTabs)
             .onChange(value => {this.plugin.settings.replaceNewTabs = value; this.plugin.saveSettings()}))
 
         new Setting(containerEl)
-        .setName('Open mission control on startup')
+        .setName(SETTING.openMissionControlOnStartup)
         .setDesc('Focuses an existing mission control tab instead of opening another one.')
         .addToggle(toggle => toggle
             .setValue(this.plugin.settings.newTabOnStart)
@@ -283,17 +338,19 @@ export class HomeTabSettingTab extends PluginSettingTab{
 
         if(this.plugin.settings.newTabOnStart){
             new Setting(containerEl)
-                .setName('Close previous session tabs on start')
-                .setDesc('Closes the previous session tabs and leaves one mission control tab.')
+                .setName(SETTING.closePreviousSessionTabsOnStart)
+                .setDesc('Closes every other open tab at startup, including notes you left open, leaving a single mission control tab.')
                 .addToggle(toggle => toggle
                     .setValue(this.plugin.settings.closePreviousSessionTabs)
                     .onChange(value => {this.plugin.settings.closePreviousSessionTabs = value; this.plugin.saveSettings()}))
         }
+    }
 
-		new Setting(containerEl).setName('Search').setHeading()
+    private renderSearchSettings(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName(SETTING.search).setHeading()
         if(this.plugin.app.plugins.getPlugin('omnisearch')){
             new Setting(containerEl)
-                .setName('Use omnisearch')
+                .setName(SETTING.useOmnisearch)
                 .setDesc('Set omnisearch as the default search engine.')
                 .addToggle(toggle => toggle
                     .setValue(this.plugin.settings.omnisearch)
@@ -301,19 +358,19 @@ export class HomeTabSettingTab extends PluginSettingTab{
         }
         if(!this.plugin.settings.omnisearch){
             new Setting(containerEl)
-                .setName('Search only Markdown files')
+                .setName(SETTING.searchOnlyMarkdownFiles)
                 .addToggle(toggle => toggle
                     .setValue(this.plugin.settings.markdownOnly)
                     .onChange(value => {this.plugin.settings.markdownOnly = value; this.plugin.saveSettings(); this.plugin.refreshOpenViews()}))
     
             new Setting(containerEl)
-                .setName('Show uncreated files')
+                .setName(SETTING.showUncreatedFiles)
                 .addToggle(toggle => toggle
                     .setValue(this.plugin.settings.unresolvedLinks)
                     .onChange(value => {this.plugin.settings.unresolvedLinks = value; this.plugin.saveSettings(); this.plugin.refreshOpenViews()}))
             
             new Setting(containerEl)
-                .setName('Show file path')
+                .setName(SETTING.showFilePath)
                 .setDesc('Displays file path at the right of the filename.')
                 .addToggle((toggle) => toggle
                     .setValue(this.plugin.settings.showPath)
@@ -321,7 +378,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
         }
 
         new Setting(containerEl)
-            .setName('Show shortcuts')
+            .setName(SETTING.showShortcuts)
             .setDesc('Displays shortcuts under the search results.')
             .addToggle((toggle) => toggle
                 .setValue(this.plugin.settings.showShortcuts)
@@ -333,7 +390,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
             ))
 
         new Setting(containerEl)
-            .setName('Search results')
+            .setName(SETTING.searchResults)
             .setDesc('Set how many results display.')
             .addSlider((slider) => slider
                 .setLimits(1, 25, 1)
@@ -342,7 +399,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
             .then((settingEl) => this.addResetButton(settingEl, 'maxResults'))
 
         new Setting(containerEl)
-            .setName('Search delay')
+            .setName(SETTING.searchDelay)
             .setDesc('The value is in milliseconds.')
             .addSlider((slider) => slider
                 .setLimits(0, 500, 10)
@@ -352,7 +409,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
 
         if(this.plugin.app.plugins.getPlugin('omnisearch')){
             new Setting(containerEl)
-                .setName('Show excerpt (omnisearch)')
+                .setName(SETTING.showExcerptOmnisearch)
                 .setDesc('Shows the contextual part of the note that matches the search.')
                 .addToggle((toggle) => toggle
                     .setValue(this.plugin.settings.showOmnisearchExcerpt)
@@ -362,11 +419,15 @@ export class HomeTabSettingTab extends PluginSettingTab{
                     }
                 ))
         }
+    }
 
-        new Setting(containerEl).setName('File display').setHeading()
+    private renderFileDisplaySettings(containerEl: HTMLElement): void {
+        new Setting(containerEl).setName(SETTING.fileDisplay).setHeading()
+
+        const folders = this.vaultFolders()
 
         new Setting(containerEl)
-            .setName('Inbox folder')
+            .setName(SETTING.inboxFolder)
             .setDesc('Folder whose files are shown in the inbox tab, sorted by most-recently modified.')
             .addDropdown(dropdown => {
                 dropdown.addOption('', '(None — pick a folder)')
@@ -380,25 +441,28 @@ export class HomeTabSettingTab extends PluginSettingTab{
             })
 
         new Setting(containerEl)
-            .setName('Store last recent files')
+            .setName(SETTING.storeLastRecentFiles)
             .setDesc('Remembers the recent files of the previous session.')
             .addToggle((toggle) => toggle
                 .setValue(this.plugin.settings.storeRecentFile)
                 .onChange((value) => {this.plugin.settings.storeRecentFile = value; this.plugin.saveSettings()}))
 
         new Setting(containerEl)
-            .setName('Recent files')
+            .setName(SETTING.recentFiles)
             .setDesc('Set how many recent files display.')
             .addSlider((slider) => slider
                 .setValue(this.plugin.settings.maxRecentFiles)
                 .setLimits(1, 25, 1)
                 .onChange((value) => {this.plugin.recentFileManager.onNewMaxListLength(value); this.plugin.settings.maxRecentFiles = value; this.plugin.saveSettings()}))
             .then((settingEl) => this.addResetButton(settingEl, 'maxRecentFiles'))
+    }
 
-        new Setting(containerEl).setName('Appearance').setHeading()
+    /** The Appearance heading and the logo group; the title group follows it. */
+    private renderAppearanceSettings(containerEl: HTMLElement): void {
+        new Setting(containerEl).setName(SETTING.appearance).setHeading()
 
         const logoTypeSetting = new Setting(containerEl)
-            .setName('Logo')
+            .setName(SETTING.logo)
             .setDesc('Remove or set a custom logo. Accepts local files, links to images or lucide icon ids.')
 
         logoTypeSetting.descEl.parentElement?.addClass('ultra-compressed')
@@ -487,7 +551,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
         
         if(this.plugin.settings.logoType === 'lucideIcon'){
             const iconColorSetting = new Setting(containerEl)
-                .setName('Logo icon color')
+                .setName(SETTING.logoIconColor)
                 .setDesc('Set the icon color')
                 
             if (this.plugin.settings.iconColorType === 'custom'){
@@ -507,7 +571,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
         }
         
         new Setting(containerEl)
-            .setName('Logo scale')
+            .setName(SETTING.logoScale)
             .setDesc('Set the logo dimensions relative to the title font size.')
             .addSlider((slider) => slider
                 .setLimits(0.3,3, 0.1)
@@ -518,8 +582,13 @@ export class HomeTabSettingTab extends PluginSettingTab{
             }))
             .then((settingEl) => this.addResetButton(settingEl, 'logoScale'))
         
+        this.renderTitleSettings(containerEl)
+    }
+
+    /** Wordmark text, font, size, weight and colour. */
+    private renderTitleSettings(containerEl: HTMLElement): void {
         new Setting(containerEl)
-            .setName('Title')
+            .setName(SETTING.title)
             .addText((text) => text
                 .setValue(this.plugin.settings.wordmark)
                 .onChange((value) => {
@@ -530,7 +599,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
 
 
         const titleFontSettings = new Setting(containerEl)
-            .setName('Title font')
+            .setName(SETTING.titleFont)
             .setDesc('Interface font, text font, and monospace font options match the fonts set in the appearance setting tab.')
 
         titleFontSettings.descEl.parentElement?.addClass('compressed')
@@ -581,7 +650,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
 
         let invalidFontSizeIcon: HTMLElement
         new Setting(containerEl)
-            .setName('Title font size')
+            .setName(SETTING.titleFontSize)
             .setDesc('Accepts any CSS font-size value.')
             .addExtraButton((button) => {button
                 .setIcon('alert-circle')
@@ -605,7 +674,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
             .then((settingEl) => this.addResetButton(settingEl, 'fontSize'))
 
         new Setting(containerEl)
-            .setName('Title font weight')
+            .setName(SETTING.titleFontWeight)
             .addSlider((slider) => slider
                 .setLimits(100, 900, 100)
                 .setValue(this.plugin.settings.fontWeight)
@@ -616,7 +685,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
             .then((settingEl) => this.addResetButton(settingEl, 'fontWeight'))
 
         const titleColorSetting = new Setting(containerEl)
-            .setName('Title color')
+            .setName(SETTING.titleColor)
 
         if (this.plugin.settings.fontColorType === 'custom'){
             titleColorSetting.addColorPicker((colorPicker) => colorPicker
@@ -634,7 +703,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
             .then((settingEl) => this.addResetButton(settingEl, 'fontColorType'))
     
         new Setting(containerEl)
-        .setName('Selection highlight')
+        .setName(SETTING.selectionHighlight)
         .setDesc('Set the color of the selected item.')
         .addDropdown((dropdown) => dropdown
             .addOption('default', 'Theme default')
@@ -659,7 +728,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
         const allTags = [...availableTags].sort((a, b) => a.localeCompare(b))
 
         const setting = new Setting(containerEl)
-            .setName('Tag filter menu')
+            .setName(SETTING.tagFilterMenu)
             .setDesc('Pick which tags appear in the dashboard\'s filter menu. Leave empty to show every tag found in your task notes.')
 
         const wrapper = setting.controlEl.createDiv({ cls: 'mc-tag-whitelist' })

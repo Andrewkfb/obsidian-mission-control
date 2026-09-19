@@ -9,7 +9,7 @@
         dashboard: Dashboard
         todayISO: string
         activeProject: string | null
-        ontoggle: (task: Task) => void
+        ontoggle: (task: Task) => Promise<boolean>
         onclearProject: () => void
     }
 

@@ -9,7 +9,8 @@
         app: App
         task: Task
         todayISO: string
-        ontoggle: (task: Task) => void
+        /** Resolves true when the write succeeded, false when it failed. */
+        ontoggle: (task: Task) => Promise<boolean>
     }
 
     let { app, task, todayISO, ontoggle }: Props = $props()
@@ -23,25 +24,51 @@
         normal: "",
     }
 
-    // Optimistic local state — immediately reflects the toggle visually
-    // while the async vault write happens in the background.
+    // Optimistic state: the row shows the new value straight away while the
+    // vault write and the re-index happen behind it.
+    //
+    // Settling purely on the write's promise would be wrong — the write
+    // resolves well before TaskIndex re-parses the file, so the row would snap
+    // back to the old value and then flip again. Instead a failure reverts at
+    // once, and a success holds until the re-indexed task actually agrees,
+    // with a backstop in case that never arrives.
     let pending = $state(false)
-    let pendingTimer: number | undefined
+    let expected = $state<boolean | null>(null)
+    let backstopTimer: number | undefined
 
-    function handleCheckbox(e: MouseEvent | KeyboardEvent) {
+    function settle() {
+        pending = false
+        expected = null
+        if (backstopTimer !== undefined) {
+            window.clearTimeout(backstopTimer)
+            backstopTimer = undefined
+        }
+    }
+
+    async function handleCheckbox(e: MouseEvent) {
         e.stopPropagation()
         if (pending) return
         pending = true
-        ontoggle(task)
-        // Reset pending after a short window; the TaskIndex watcher will
-        // re-render the row with the real state once the vault write settles.
-        if (pendingTimer !== undefined) window.clearTimeout(pendingTimer)
-        pendingTimer = window.setTimeout(() => { pending = false }, 1500)
+        expected = !task.checked
+
+        if (await ontoggle(task)) {
+            if (backstopTimer !== undefined) window.clearTimeout(backstopTimer)
+            backstopTimer = window.setTimeout(settle, 5000)
+        } else {
+            // The write failed and the caller has surfaced why — don't keep
+            // showing a state the file never took.
+            settle()
+        }
     }
+
+    // The re-indexed task caught up, so the optimistic state has served its purpose.
+    $effect(() => {
+        if (pending && expected !== null && task.checked === expected) settle()
+    })
 
     // Don't leave a timer running against a destroyed row.
     $effect(() => () => {
-        if (pendingTimer !== undefined) window.clearTimeout(pendingTimer)
+        if (backstopTimer !== undefined) window.clearTimeout(backstopTimer)
     })
 
     function openTask(newTab: boolean) {
@@ -83,27 +110,41 @@
         : task.scheduled
         ? relativeLabel(task.scheduled, todayISO)
         : "")
-    // Optimistic checked state: flip immediately on pending, revert when task prop updates.
-    const displayChecked = $derived(pending ? !task.checked : task.checked)
+    // Optimistic checked state: show the intended value while a write is in flight.
+    const displayChecked = $derived(pending && expected !== null ? expected : task.checked)
 </script>
 
+<!--
+    The row is a plain container, not a control. It used to carry role="button"
+    while containing a button and anchors, which is invalid nesting: assistive
+    tech flattens it and the inner controls become unreachable. The two real
+    actions are now real buttons, and clicking the row is a redundant mouse
+    shortcut for the "open" button beside it.
+-->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
     class="mc-task-item"
     class:mc-checked={displayChecked}
-    role="button"
-    tabindex="0"
-    onclick={(e) => { if (!(e.target instanceof Element && e.target.closest('.mc-task-checkbox-btn'))) openTask(e.ctrlKey || e.metaKey) }}
-    onkeydown={(e) => { if (e.key === "Enter") openTask(false) }}
+    onclick={(e) => {
+        if (e.target instanceof Element && e.target.closest('button, a')) return
+        openTask(e.ctrlKey || e.metaKey)
+    }}
 >
-    <!-- Checkbox — separate interactive element so it doesn't open the file -->
+    <!--
+        role="checkbox" rather than a pressed button: this toggles a value, it
+        doesn't trigger an action. A native <button> already fires click on
+        Enter and Space, so there is no keydown handler to add — the previous
+        one double-fired and was only masked by the pending guard.
+    -->
     <button
         class="mc-task-checkbox-btn"
         class:mc-done={displayChecked}
         class:mc-pending={pending}
-        aria-label={displayChecked ? "Mark as open" : "Mark as done"}
-        aria-pressed={displayChecked}
+        role="checkbox"
+        aria-checked={displayChecked}
+        aria-label={task.text || "Task"}
         onclick={handleCheckbox}
-        onkeydown={(e) => { e.stopPropagation(); if (e.key === " " || e.key === "Enter") handleCheckbox(e) }}
     >
         {#if displayChecked}
             ✓
@@ -120,7 +161,6 @@
                 class="mc-task-link internal-link"
                 href={seg.target}
                 onclick={(e) => openLink(e, seg.target)}
-                onkeydown={(e) => { if (e.key === "Enter") openLink(e, seg.target) }}
             >{seg.display}</a>{/if}
         {/each}
     </span>
@@ -142,6 +182,13 @@
     <span class="mc-task-project">
         {task.project}{#if task.heading && $pluginSettingsStore?.showHeadings}<span class="mc-task-heading"> › {task.heading}</span>{/if}
     </span>
+
+    <!-- The keyboard-reachable way to open the task; the row click mirrors it. -->
+    <button
+        class="mc-task-open"
+        aria-label="Open task in {task.project}"
+        onclick={(e) => { e.stopPropagation(); openTask(e.ctrlKey || e.metaKey) }}
+    >↗</button>
 </div>
 
 <style>
@@ -245,5 +292,21 @@
     }
     .mc-task-heading {
         color: var(--text-muted);
+    }
+    .mc-task-open {
+        flex: 0 0 auto;
+        background: none;
+        box-shadow: none;
+        padding: 4px 8px;
+        color: var(--text-muted);
+        opacity: 0;
+    }
+    .mc-task-item:hover .mc-task-open,
+    .mc-task-open:focus-visible {
+        opacity: 1;
+    }
+    /* There is no hover on touch, so don't hide the only visible open control. */
+    @media (pointer: coarse) {
+        .mc-task-open { opacity: 1; }
     }
 </style>

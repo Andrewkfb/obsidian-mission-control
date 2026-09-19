@@ -34,10 +34,11 @@ const tasks = [
 const dashboard = buildDashboard(tasks, TODAY, { upcomingDays: 7, showCompleted: false })
 const app = { vault: { getAbstractFileByPath: () => null }, workspace: {} }
 const noop = () => {}
+const noopToggle = async () => true
 
 console.log('SSR render smoke tests:')
 {
-    const { body } = render(TodayTab, { props: { app, dashboard, todayISO: TODAY, activeProject: null, ontoggle: noop, onclearProject: noop } })
+    const { body } = render(TodayTab, { props: { app, dashboard, todayISO: TODAY, activeProject: null, ontoggle: noopToggle, onclearProject: noop } })
     assert(body.includes('Overdue thing'), 'TodayTab renders an overdue task')
     assert(body.includes('Due today'), 'TodayTab renders a due-today task')
     assert(body.includes('8d overdue'), 'TodayTab renders the overdue badge')
@@ -46,18 +47,18 @@ console.log('SSR render smoke tests:')
     assert(!body.includes('Undated backlog thing'), 'TodayTab excludes backlog tasks')
 }
 {
-    const { body } = render(UpcomingTab, { props: { app, dashboard, todayISO: TODAY, ontoggle: noop } })
+    const { body } = render(UpcomingTab, { props: { app, dashboard, todayISO: TODAY, ontoggle: noopToggle } })
     assert(body.includes('Tomorrow thing'), 'UpcomingTab renders a tomorrow task')
     assert(body.includes('Tomorrow'), 'UpcomingTab renders the group heading')
 }
 {
-    const { body } = render(BacklogTab, { props: { app, dashboard, todayISO: TODAY, ontoggle: noop } })
+    const { body } = render(BacklogTab, { props: { app, dashboard, todayISO: TODAY, ontoggle: noopToggle } })
     assert(body.includes('Undated backlog thing'), 'BacklogTab renders the undated task')
     assert(body.includes('Far future'), 'BacklogTab renders the beyond-window task')
     assert(body.includes('No date'), 'BacklogTab renders the noDate group title')
 }
 {
-    const { body } = render(RecurringTab, { props: { app, dashboard, todayISO: TODAY, ontoggle: noop } })
+    const { body } = render(RecurringTab, { props: { app, dashboard, todayISO: TODAY, ontoggle: noopToggle } })
     assert(body.includes('Standup'), 'RecurringTab renders the recurring task')
     assert(body.includes('every day'), 'RecurringTab renders the recurrence rule')
     assert(body.includes('next'), 'RecurringTab renders the next-occurrence label')
@@ -70,10 +71,25 @@ console.log('SSR render smoke tests:')
 {
     // Wikilink segmentation is $derived now — check it still splits into an anchor.
     const linked = tasks.find(t => t.text.includes('['))!
-    const { body } = render(TaskItem, { props: { app, task: linked, todayISO: TODAY, ontoggle: noop } })
+    const { body } = render(TaskItem, { props: { app, task: linked, todayISO: TODAY, ontoggle: noopToggle } })
     assert(body.includes('<a'), 'TaskItem renders a wikilink as an anchor')
     assert(body.includes('>note<'), 'TaskItem uses the wikilink display text')
-    assert(body.includes('Mark as done'), 'TaskItem renders the checkbox with its aria-label')
+    // Accessibility contract: the row is not itself a control, the checkbox is a
+    // real checkbox labelled with the task it belongs to, and opening the task
+    // has its own focusable button.
+    assert(body.includes('role="checkbox"'), 'TaskItem checkbox uses role=checkbox')
+    assert(body.includes('aria-checked="false"'), 'TaskItem checkbox exposes its checked state')
+    assert(!body.includes('role="button"'), 'TaskItem row is not itself a button')
+    assert(!body.includes('aria-pressed'), 'TaskItem checkbox is not a toggle button')
+    assert(body.includes('Open task in Proj'), 'TaskItem renders a labelled open button')
+    // Native buttons and anchors already activate on Enter/Space. Keydown handlers
+    // alongside them fire a second time, which opened wikilinks twice in a new tab.
+    assert(!body.includes('onkeydown'), 'TaskItem adds no keydown handlers that duplicate native activation')
+}
+{
+    const done = mk('- [x] Finished thing 📅 2026-05-28')
+    const { body } = render(TaskItem, { props: { app, task: done, todayISO: TODAY, ontoggle: noopToggle } })
+    assert(body.includes('aria-checked="true"'), 'TaskItem reflects a completed task as checked')
 }
 {
     const { body } = render(TagFilterButton, { props: { availableTags: ['work', 'home'], activeTags: ['work'], onchange: noop } })
