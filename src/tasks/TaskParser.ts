@@ -84,10 +84,16 @@ export function parseTaskLine(line: string, sourcePath: string, lineNumber: numb
         }
     }
 
-    // Priority emoji
+    // Priority emoji. PRIORITY_EMOJI is ordered highest → lowest, so the first
+    // match wins: a line carrying more than one marker takes the strongest.
+    // (Every marker is still stripped from the display text.)
+    let priorityFound = false
     for (const { emoji, priority } of PRIORITY_EMOJI) {
         if (body.includes(emoji)) {
-            task.priority = priority
+            if (!priorityFound) {
+                task.priority = priority
+                priorityFound = true
+            }
             body = body.replace(emoji, ' ')
         }
     }

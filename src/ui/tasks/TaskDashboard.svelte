@@ -3,7 +3,7 @@
     import { onMount, type ComponentType } from "svelte"
     import { tasks as tasksStore, pluginSettingsStore, noteTagsByPath } from "src/store"
     import { buildDashboard, type Dashboard, type ProjectSummary } from "src/tasks/grouping"
-    import { getToday } from "src/tasks/dates"
+    import { getToday, msUntilNextDayStart } from "src/tasks/dates"
     import { toggleComplete } from "src/tasks/TaskWriter"
     import type { Task } from "src/tasks/Task"
     import type HomeTab from "src/main"
@@ -149,7 +149,43 @@
         }
     })
 
-    $: todayISO = $pluginSettingsStore ? getToday($pluginSettingsStore.dayStartHour) : ""
+    // "Today" has to survive the clock, not just the mount: this view is a home
+    // tab, so it routinely sits open across a day boundary. `todayISO` is driven
+    // imperatively rather than derived so that a re-check which lands on the
+    // same date doesn't invalidate the whole dashboard.
+    let todayISO = ""
+    let dayStartHour = 4
+    let rolloverTimer: number | undefined
+
+    $: syncToday($pluginSettingsStore?.dayStartHour ?? 4)
+
+    function syncToday(hour: number): void {
+        dayStartHour = hour
+        const next = getToday(hour)
+        if (next !== todayISO) todayISO = next
+        scheduleRollover()
+    }
+
+    function scheduleRollover(): void {
+        if (rolloverTimer !== undefined) window.clearTimeout(rolloverTimer)
+        // Floor the delay: a boundary computed as "now" would otherwise spin.
+        const delay = Math.max(1000, msUntilNextDayStart(dayStartHour))
+        rolloverTimer = window.setTimeout(() => syncToday(dayStartHour), delay)
+    }
+
+    // A long timeout is not reliable across sleep/suspend, so re-check whenever
+    // the window comes back to the foreground too.
+    onMount(() => {
+        const recheck = () => syncToday(dayStartHour)
+        document.addEventListener("visibilitychange", recheck)
+        window.addEventListener("focus", recheck)
+        return () => {
+            document.removeEventListener("visibilitychange", recheck)
+            window.removeEventListener("focus", recheck)
+            if (rolloverTimer !== undefined) window.clearTimeout(rolloverTimer)
+        }
+    })
+
     $: allowedTagWhitelist = $pluginSettingsStore?.allowedFilterTags ?? []
     $: activeFilterTags = $pluginSettingsStore?.activeFilterTags ?? []
 

@@ -6,12 +6,27 @@
  * hour. Before `dayStartHour`, the date still counts as the previous day, so
  * late-night work stays on the Today pane.
  */
-export function getToday(dayStartHour: number): string {
-    const now = new Date()
-    if (now.getHours() < dayStartHour) {
-        now.setDate(now.getDate() - 1)
+export function getToday(dayStartHour: number, now: Date = new Date()): string {
+    const day = new Date(now)
+    if (day.getHours() < dayStartHour) {
+        day.setDate(day.getDate() - 1)
     }
-    return toISO(now)
+    return toISO(day)
+}
+
+/**
+ * Milliseconds from `now` until the next `dayStartHour` boundary — i.e. the
+ * moment `getToday` starts returning a different date.
+ *
+ * A dashboard left open overnight is the normal case for a home tab, so the
+ * view needs to re-derive "today" on a timer rather than only at mount.
+ */
+export function msUntilNextDayStart(dayStartHour: number, now: Date = new Date()): number {
+    const next = new Date(now)
+    next.setHours(dayStartHour, 0, 0, 0)
+    // Landing on or before `now` means today's boundary has already passed.
+    if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1)
+    return next.getTime() - now.getTime()
 }
 
 /** Local-time yyyy-mm-dd (avoids the UTC shift of Date.toISOString). */

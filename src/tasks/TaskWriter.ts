@@ -71,34 +71,66 @@ export function buildNextRecurrence(line: string, task: Task, todayISO: string):
 }
 
 /**
+ * Locate the line a task currently occupies.
+ *
+ * `task.sourceLine` goes stale easily: the index flushes on a debounce, and
+ * completing a recurring task splices the next occurrence in *above* the
+ * original, shifting every line below it by one. Checking only that the
+ * recorded line still looks like a task is not enough — every task line passes
+ * that test, so a stale index would silently toggle a neighbour.
+ *
+ * Matching the full `rawText` instead, at the recorded line or as near to it as
+ * possible, means a mismatch is detected rather than written over.
+ *
+ * Returns the matching line index, or undefined when the task can no longer be
+ * identified — in which case the caller must refuse to write.
+ */
+export function resolveTaskLine(lines: string[], task: Task, searchRadius = 5): number | undefined {
+    if (lines[task.sourceLine] === task.rawText) return task.sourceLine
+
+    // Walk outwards so the nearest match to the recorded line wins. That is the
+    // best available guess when a file holds several identical task lines.
+    for (let offset = 1; offset <= searchRadius; offset++) {
+        const before = task.sourceLine - offset
+        if (before >= 0 && lines[before] === task.rawText) return before
+        const after = task.sourceLine + offset
+        if (after < lines.length && lines[after] === task.rawText) return after
+    }
+
+    return undefined
+}
+
+/**
  * Toggle a task's completion state in the vault, handling recurrence.
  *
  * - Reads the source file.
- * - Verifies the line at task.sourceLine still looks like the task (guards
- *   against index being stale if the file was edited between index and click).
+ * - Re-locates the task by its raw text (see `resolveTaskLine`) and bails out
+ *   rather than writing when it can't be found.
  * - Toggles the checkbox and ✅ date.
  * - If completing a recurring task, inserts the next-occurrence line above.
  * - Writes back to the vault.
  */
 export async function toggleComplete(task: Task, vault: Vault, todayISO: string): Promise<void> {
     const file = vault.getFileByPath(task.sourcePath)
-    if (!file) throw new Error(`Mission Control: source file not found: ${task.sourcePath}`)
+    // Messages here are surfaced by the caller, which already prefixes them
+    // with "Mission Control:" — don't repeat it.
+    if (!file) throw new Error(`source file not found: ${task.sourcePath}`)
 
     await vault.process(file, content => {
         const lines = content.split('\n')
-        const line = lines[task.sourceLine]
+        const lineNumber = resolveTaskLine(lines, task)
 
-        if (line === undefined) throw new Error(`Mission Control: line ${task.sourceLine} not found in ${task.sourcePath}`)
-        if (!CHECKBOX_RE.test(line)) {
-            throw new Error(`Mission Control: line ${task.sourceLine} in ${task.sourcePath} is no longer a task`)
+        if (lineNumber === undefined) {
+            throw new Error(`"${task.text}" has moved or changed in ${task.sourcePath}. Nothing was written — try again in a moment.`)
         }
 
+        const line = lines[lineNumber]
         const toComplete = !task.checked
-        lines[task.sourceLine] = applyToggleToLine(line, toComplete, todayISO)
+        lines[lineNumber] = applyToggleToLine(line, toComplete, todayISO)
 
         if (toComplete && task.recurrence) {
             const nextLine = buildNextRecurrence(line, task, todayISO)
-            if (nextLine) lines.splice(task.sourceLine, 0, nextLine)
+            if (nextLine) lines.splice(lineNumber, 0, nextLine)
         }
 
         return lines.join('\n')

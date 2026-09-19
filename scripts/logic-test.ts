@@ -3,8 +3,9 @@
 
 import { parseTasks, parseTaskLine } from '../src/tasks/TaskParser'
 import { buildDashboard } from '../src/tasks/grouping'
-import { getToday, addDaysISO } from '../src/tasks/dates'
-import { applyToggleToLine, buildNextRecurrence } from '../src/tasks/TaskWriter'
+import { getToday, addDaysISO, msUntilNextDayStart } from '../src/tasks/dates'
+import { applyToggleToLine, buildNextRecurrence, resolveTaskLine, toggleComplete } from '../src/tasks/TaskWriter'
+import type { Vault } from 'obsidian'
 import { computeNextDate } from '../src/tasks/recurrence'
 import type { Task } from '../src/tasks/Task'
 
@@ -29,6 +30,15 @@ console.log('TaskParser:')
 {
     const t = parseTaskLine('- [ ] medium priority 🔼', 'P.md', 0, 'P')!
     assert(t.priority === 'medium', 'extracts 🔼 medium priority')
+}
+{
+    // Two markers on one line: the strongest wins, and both are stripped.
+    const t = parseTaskLine('- [ ] conflicting 🔺 ⏬', 'P.md', 0, 'P')!
+    assert(t.priority === 'highest', 'multiple priority markers: highest wins')
+    assert(t.text === 'conflicting', 'multiple priority markers: all stripped from text')
+
+    const reversed = parseTaskLine('- [ ] conflicting ⏬ 🔺', 'P.md', 0, 'P')!
+    assert(reversed.priority === 'highest', 'multiple priority markers: order on the line is irrelevant')
 }
 {
     const t = parseTaskLine('  - [x] done thing ✅ 2026-05-20 ➕ 2026-05-01', 'P.md', 0, 'P')!
@@ -63,6 +73,27 @@ console.log('\ndates:')
     assert(addDaysISO('2026-05-28', 1) === '2026-05-29', 'addDaysISO +1')
     assert(addDaysISO('2026-03-01', -1) === '2026-02-28', 'addDaysISO across month boundary')
     assert(typeof getToday(4) === 'string' && getToday(4).length === 10, 'getToday returns ISO string')
+
+    // Day-start boundary: 2am with a 4am start still counts as the previous day.
+    const lateNight = new Date(2026, 4, 28, 2, 30)
+    const morning = new Date(2026, 4, 28, 9, 0)
+    assert(getToday(4, lateNight) === '2026-05-27', 'getToday: before dayStartHour => previous day')
+    assert(getToday(4, morning) === '2026-05-28', 'getToday: after dayStartHour => current day')
+    assert(getToday(0, lateNight) === '2026-05-28', 'getToday: dayStartHour 0 => calendar day')
+}
+
+// ─── dates: rollover scheduling ──────────────────────────────────────────────
+console.log('\ndates (msUntilNextDayStart):')
+{
+    const HOUR = 3_600_000
+    // 02:30 with a 4am start: the boundary is 90 minutes away, later today.
+    assert(msUntilNextDayStart(4, new Date(2026, 4, 28, 2, 30)) === 1.5 * HOUR, 'boundary later today')
+    // 09:00 with a 4am start: today's boundary has passed, so wait for tomorrow.
+    assert(msUntilNextDayStart(4, new Date(2026, 4, 28, 9, 0)) === 19 * HOUR, 'boundary rolls to tomorrow')
+    // Exactly on the boundary counts as passed — getToday already returns the new day.
+    assert(msUntilNextDayStart(4, new Date(2026, 4, 28, 4, 0)) === 24 * HOUR, 'exactly on the boundary waits a full day')
+    assert(msUntilNextDayStart(0, new Date(2026, 4, 28, 23, 0)) === 1 * HOUR, 'midnight start from 23:00')
+    assert(msUntilNextDayStart(4, new Date(2026, 4, 28, 3, 59, 59)) === 1000, 'sub-minute delay stays positive')
 }
 
 // ─── grouping ────────────────────────────────────────────────────────────────
@@ -103,6 +134,7 @@ console.log('\ngrouping:')
     const recurring = mk({ recurrence: 'every week', due: today })
     const recurringDashboard = buildDashboard([recurring], today, { upcomingDays: 7, showCompleted: false })
     assert(recurringDashboard.recurring[0]?.nextDate === addDaysISO(today, 7), 'recurring dashboard computes next occurrence')
+
 }
 
 // ─── TaskWriter: applyToggleToLine ───────────────────────────────────────────
@@ -127,6 +159,58 @@ console.log('\nTaskWriter (applyToggleToLine):')
 
     assert(applyToggleToLine(nocheckbox, true, '2026-05-28') === nocheckbox, 'non-task line returned unchanged')
     assert(applyToggleToLine(indented, true, '2026-05-28').includes('[x]'), 'indented task toggles correctly')
+}
+
+// ─── TaskWriter: resolveTaskLine ─────────────────────────────────────────────
+console.log('\nTaskWriter (resolveTaskLine):')
+{
+    const mkTask = (raw: string, line: number): Task => ({
+        ...parseTaskLine(raw, 'P.md', line, 'P')!,
+        rawText: raw,
+        sourceLine: line,
+    })
+
+    const alpha = '- [ ] Alpha 📅 2026-06-01'
+    const beta  = '- [ ] Beta 📅 2026-06-02'
+    const gamma = '- [ ] Gamma 📅 2026-06-03'
+
+    {
+        const lines = ['# Heading', alpha, beta, gamma]
+        assert(resolveTaskLine(lines, mkTask(beta, 2)) === 2, 'exact hit at the recorded line')
+    }
+    {
+        // A recurrence splice above Beta pushed everything below down by one.
+        const lines = ['# Heading', alpha, '- [ ] Alpha 📅 2026-06-08', beta, gamma]
+        assert(resolveTaskLine(lines, mkTask(beta, 2)) === 3, 'follows a task shifted down by an insert')
+    }
+    {
+        const lines = ['# Heading', beta, gamma]
+        assert(resolveTaskLine(lines, mkTask(beta, 2)) === 1, 'follows a task shifted up by a deletion')
+    }
+    {
+        // The stale-index case that used to corrupt the wrong task: the recorded
+        // line holds a *different* task, so there must be no match at all.
+        const lines = ['# Heading', alpha, gamma]
+        assert(resolveTaskLine(lines, mkTask(beta, 2)) === undefined, 'refuses when the task is gone, even though a task occupies the line')
+    }
+    {
+        const lines = ['# Heading', alpha, '- [ ] Beta rewritten by the user', gamma]
+        assert(resolveTaskLine(lines, mkTask(beta, 2)) === undefined, 'refuses when the line text was edited')
+    }
+    {
+        const lines = [alpha, beta, gamma]
+        assert(resolveTaskLine(lines, mkTask(beta, 99)) === undefined, 'refuses when the recorded line is far out of range')
+    }
+    {
+        // Duplicate identical lines: pick the one nearest the recorded index.
+        const lines = [beta, beta, beta]
+        assert(resolveTaskLine(lines, mkTask(beta, 2)) === 2, 'duplicate lines: exact index wins')
+        assert(resolveTaskLine(lines, mkTask(beta, 0)) === 0, 'duplicate lines: nearest match wins')
+    }
+    {
+        const lines = ['', alpha]
+        assert(resolveTaskLine(lines, mkTask(alpha, 0)) === 1, 'search does not run off the start of the file')
+    }
 }
 
 // ─── recurrence: computeNextDate ─────────────────────────────────────────────
@@ -166,5 +250,78 @@ console.log('\nTaskWriter (buildNextRecurrence):')
     assert(unknown === undefined, 'unknown recurrence rule: returns undefined gracefully')
 }
 
-console.log(`\n${failures === 0 ? 'ALL PASSED' : failures + ' FAILED'}`)
-process.exit(failures === 0 ? 0 : 1)
+// ─── TaskWriter: toggleComplete (integration, against a fake vault) ──────────
+// Exercises the real write path — resolve, toggle, recurrence splice — because
+// that is where a stale index used to corrupt the wrong line.
+async function testToggleComplete(): Promise<void> {
+    console.log('\nTaskWriter (toggleComplete):')
+
+    const fakeVault = (files: Record<string, string>) => ({
+        getFileByPath: (path: string) => (path in files ? { path } : null),
+        process: async (file: { path: string }, fn: (content: string) => string) => {
+            files[file.path] = fn(files[file.path])
+            return files[file.path]
+        },
+    }) as unknown as Vault
+
+    const alpha = '- [ ] Alpha 📅 2026-06-01'
+    const beta  = '- [ ] Beta 📅 2026-06-02'
+    const gamma = '- [ ] Gamma 📅 2026-06-03'
+
+    // The task was indexed at line 2, but a line has since been inserted above
+    // it — so line 2 now holds Alpha, and a naive write would complete Alpha.
+    {
+        const files = { 'P.md': ['# Tasks', '- [ ] Zero', alpha, beta].join('\n') }
+        const staleTask: Task = { ...parseTaskLine(beta, 'P.md', 2, 'P')!, rawText: beta, sourceLine: 2 }
+        await toggleComplete(staleTask, fakeVault(files), '2026-05-28')
+        const lines = files['P.md'].split('\n')
+        assert(lines[2] === alpha, 'stale index: the innocent neighbour is left alone')
+        assert(lines[3].includes('[x]') && lines[3].includes('Beta'), 'stale index: the intended task is completed')
+    }
+
+    // The task is gone, but another task occupies its recorded line. The old
+    // "is this still a task line?" guard passed here; this must not.
+    {
+        const original = ['# Tasks', alpha, gamma].join('\n')
+        const files = { 'P.md': original }
+        const goneTask: Task = { ...parseTaskLine(beta, 'P.md', 2, 'P')!, rawText: beta, sourceLine: 2 }
+        let rejected = false
+        try {
+            await toggleComplete(goneTask, fakeVault(files), '2026-05-28')
+        } catch {
+            rejected = true
+        }
+        assert(rejected, 'vanished task: the write is refused')
+        assert(files['P.md'] === original, 'vanished task: the file is left byte-identical')
+    }
+
+    // Completing a recurring task stamps the original done and splices the next
+    // occurrence in above it.
+    {
+        const raw = '- [ ] Stand-up 🔁 every day 📅 2026-05-28'
+        const files = { 'P.md': raw }
+        const task: Task = { ...parseTaskLine(raw, 'P.md', 0, 'P')!, rawText: raw, sourceLine: 0 }
+        await toggleComplete(task, fakeVault(files), '2026-05-28')
+        const lines = files['P.md'].split('\n')
+        assert(lines.length === 2, 'recurring: a line is added')
+        assert(lines[0].includes('[ ]') && lines[0].includes('📅 2026-05-29'), 'recurring: next occurrence is open and advanced')
+        assert(lines[1].includes('[x]') && lines[1].includes('✅ 2026-05-28'), 'recurring: original is completed and stamped')
+    }
+
+    // A missing source file surfaces as a rejection rather than a silent no-op.
+    {
+        const task: Task = { ...parseTaskLine(beta, 'P.md', 0, 'P')!, rawText: beta, sourceLine: 0 }
+        let rejected = false
+        try {
+            await toggleComplete(task, fakeVault({}), '2026-05-28')
+        } catch {
+            rejected = true
+        }
+        assert(rejected, 'missing source file: the write is refused')
+    }
+}
+
+void testToggleComplete().then(() => {
+    console.log(`\n${failures === 0 ? 'ALL PASSED' : failures + ' FAILED'}`)
+    process.exit(failures === 0 ? 0 : 1)
+})
