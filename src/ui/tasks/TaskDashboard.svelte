@@ -1,6 +1,6 @@
 <script lang="ts">
     import { Notice, type App } from "obsidian"
-    import { onMount, type ComponentType } from "svelte"
+    import { onMount, type Component } from "svelte"
     import { tasks as tasksStore, pluginSettingsStore, noteTagsByPath } from "src/store"
     import { buildDashboard, type Dashboard, type ProjectSummary } from "src/tasks/grouping"
     import { getToday, msUntilNextDayStart } from "src/tasks/dates"
@@ -18,19 +18,23 @@
     import InboxTab from "./tabs/InboxTab.svelte"
     import TagFilterButton from "./TagFilterButton.svelte"
 
-    export let plugin: HomeTab
+    interface Props {
+        plugin: HomeTab
+    }
+
+    let { plugin }: Props = $props()
 
     // Registry of dashboard tabs. To add a new tab:
     //   1. Create a component under ./tabs/.
     //   2. Add an entry here with its id, label, optional badge, and props.
     // The tab bar and pane both render from this array — no other code changes needed.
+    // Callbacks are ordinary props now, so `props` carries everything a tab needs.
     type TabDef = {
         id: string
         label: string
         badge?: (d: Dashboard) => number
-        component: ComponentType
+        component: Component<any>
         props: (ctx: TabContext) => Record<string, unknown>
-        events?: (ctx: TabContext) => Record<string, (e: CustomEvent) => void>
     }
     type TabContext = {
         app: App
@@ -45,10 +49,10 @@
             label: "Today",
             badge: (d) => d.today.reduce((n, g) => n + g.tasks.length, 0),
             component: TodayTab,
-            props: (ctx) => ({ app: ctx.app, dashboard: ctx.dashboard, todayISO: ctx.todayISO, activeProject: ctx.activeProject }),
-            events: () => ({
-                toggle: (e) => handleToggle(e.detail.task),
-                clearProject: () => (activeProject = null),
+            props: (ctx) => ({
+                app: ctx.app, dashboard: ctx.dashboard, todayISO: ctx.todayISO, activeProject: ctx.activeProject,
+                ontoggle: handleToggle,
+                onclearProject: () => (activeProject = null),
             }),
         },
         {
@@ -56,31 +60,27 @@
             label: "Upcoming",
             badge: (d) => d.upcoming.reduce((n, g) => n + g.tasks.length, 0),
             component: UpcomingTab,
-            props: (ctx) => ({ app: ctx.app, dashboard: ctx.dashboard, todayISO: ctx.todayISO }),
-            events: () => ({ toggle: (e) => handleToggle(e.detail.task) }),
+            props: (ctx) => ({ app: ctx.app, dashboard: ctx.dashboard, todayISO: ctx.todayISO, ontoggle: handleToggle }),
         },
         {
             id: "backlog",
             label: "Backlog",
             badge: (d) => d.backlog.reduce((n, g) => n + g.tasks.length, 0),
             component: BacklogTab,
-            props: (ctx) => ({ app: ctx.app, dashboard: ctx.dashboard, todayISO: ctx.todayISO }),
-            events: () => ({ toggle: (e) => handleToggle(e.detail.task) }),
+            props: (ctx) => ({ app: ctx.app, dashboard: ctx.dashboard, todayISO: ctx.todayISO, ontoggle: handleToggle }),
         },
         {
             id: "projects",
             label: "Projects",
             component: ProjectsTab,
-            props: (ctx) => ({ app: ctx.app, dashboard: ctx.dashboard, activeProject: ctx.activeProject }),
-            events: () => ({ selectProject: (e) => selectProject(e.detail.project) }),
+            props: (ctx) => ({ app: ctx.app, dashboard: ctx.dashboard, activeProject: ctx.activeProject, onselectProject: selectProject }),
         },
         {
             id: "recurring",
             label: "Recurring",
             badge: (d) => d.recurring.length,
             component: RecurringTab,
-            props: (ctx) => ({ app: ctx.app, dashboard: ctx.dashboard, todayISO: ctx.todayISO }),
-            events: () => ({ toggle: (e) => handleToggle(e.detail.task) }),
+            props: (ctx) => ({ app: ctx.app, dashboard: ctx.dashboard, todayISO: ctx.todayISO, ontoggle: handleToggle }),
         },
         {
             id: "inbox",
@@ -102,28 +102,32 @@
         },
     ]
 
-    let activeTabId: string = tabs[0].id
-    let activeProject: string | null = null
-    let barEl: HTMLElement | null = null
+    let activeTabId: string = $state(tabs[0].id)
+    let activeProject: string | null = $state(null)
+    let barEl = $state<HTMLElement>()
 
-    $: isbookmarksPluginEnabled = !!plugin.app.internalPlugins.getPluginById('bookmarks')
-    $: enabledTabIds = $pluginSettingsStore?.activeTabs ?? tabs.map(t => t.id)
-    $: visibleTabs = tabs.filter(t => {
+    const isbookmarksPluginEnabled = $derived(!!plugin.app.internalPlugins.getPluginById('bookmarks'))
+    const enabledTabIds = $derived($pluginSettingsStore?.activeTabs ?? tabs.map(t => t.id))
+    const visibleTabs = $derived(tabs.filter(t => {
         if (!enabledTabIds.includes(t.id)) return false
         if (t.id === 'bookmarks' && (!isbookmarksPluginEnabled || !plugin.bookmarkedFileManager)) return false
         if (t.id === 'recent' && !plugin.recentFileManager) return false
         return true
+    }))
+
+    // Fall back to the first visible tab when the active one is hidden in settings.
+    $effect(() => {
+        if (visibleTabs.length > 0 && !visibleTabs.some(t => t.id === activeTabId)) {
+            activeTabId = visibleTabs[0].id
+        }
     })
-    $: if (visibleTabs.length > 0 && !visibleTabs.some(t => t.id === activeTabId)) {
-        activeTabId = visibleTabs[0].id
-    }
 
     // After a tab switch, snap whatever ancestor is actually scrolling back to the
     // top of the tab bar. iOS opens the native <select> picker by scrolling the
     // page so the control is visible, and the scroll position isn't restored after
     // the picker closes — without this, switching tabs leaves the tabs (and tasks)
     // pushed off-screen behind the Obsidian mobile toolbar.
-    function findScrollParent(el: HTMLElement | null): HTMLElement | null {
+    function findScrollParent(el: HTMLElement | undefined): HTMLElement | null {
         let node: HTMLElement | null = el?.parentElement ?? null
         while (node) {
             const style = getComputedStyle(node)
@@ -163,11 +167,13 @@
     // tab, so it routinely sits open across a day boundary. `todayISO` is driven
     // imperatively rather than derived so that a re-check which lands on the
     // same date doesn't invalidate the whole dashboard.
-    let todayISO = ""
+    let todayISO = $state("")
     let dayStartHour = 4
     let rolloverTimer: number | undefined
 
-    $: syncToday($pluginSettingsStore?.dayStartHour ?? 4)
+    $effect(() => {
+        syncToday($pluginSettingsStore?.dayStartHour ?? 4)
+    })
 
     function syncToday(hour: number): void {
         dayStartHour = hour
@@ -196,13 +202,13 @@
         }
     })
 
-    $: allowedTagWhitelist = $pluginSettingsStore?.allowedFilterTags ?? []
-    $: activeFilterTags = $pluginSettingsStore?.activeFilterTags ?? []
+    const allowedTagWhitelist = $derived($pluginSettingsStore?.allowedFilterTags ?? [])
+    const activeFilterTags = $derived($pluginSettingsStore?.activeFilterTags ?? [])
 
     // Tags shown in the filter menu = whitelist if set, otherwise every tag we've
     // indexed — from note frontmatter/body *and* from the task lines themselves,
     // so a tag that only ever appears on a task is still selectable.
-    $: indexedTags = (() => {
+    const indexedTags = $derived.by(() => {
         const all = new Set<string>()
         for (const tags of ($noteTagsByPath ?? new Map<string, Set<string>>()).values()) {
             for (const t of tags) all.add(t)
@@ -211,22 +217,22 @@
             for (const t of task.tags) all.add(t)
         }
         return [...all].sort((a, b) => a.localeCompare(b))
-    })()
-    $: menuTags = allowedTagWhitelist.length > 0
+    })
+    const menuTags = $derived(allowedTagWhitelist.length > 0
         ? indexedTags.filter(t => allowedTagWhitelist.includes(t))
-        : indexedTags
+        : indexedTags)
 
     // Filter pipeline: project filter, then tag filter, then bucket.
-    $: allTasks = ($tasksStore ?? []).filter((t) => {
+    const allTasks = $derived(($tasksStore ?? []).filter((t) => {
         if (activeProject && t.sourcePath !== activeProject) return false
         return taskMatchesTags(t, activeFilterTags, $noteTagsByPath?.get(t.sourcePath))
-    })
-    $: dashboard = buildDashboard(allTasks, todayISO, {
+    }))
+    const dashboard = $derived(buildDashboard(allTasks, todayISO, {
         upcomingDays: $pluginSettingsStore?.upcomingDays ?? 7,
         showCompleted: $pluginSettingsStore?.showCompletedTasks ?? false,
-    })
-    $: ctx = { app: plugin.app, dashboard, todayISO, activeProject } as TabContext
-    $: activeTab = visibleTabs.find((t) => t.id === activeTabId) ?? visibleTabs[0]
+    }))
+    const ctx = $derived({ app: plugin.app, dashboard, todayISO, activeProject } as TabContext)
+    const activeTab = $derived(visibleTabs.find((t) => t.id === activeTabId) ?? visibleTabs[0])
 
     async function handleToggle(task: Task) {
         try {
@@ -254,12 +260,12 @@
         <div class="mc-tabbar">
             {#each visibleTabs as tab (tab.id)}
                 {@const count = tab.badge?.(dashboard) ?? 0}
-                <button class:mc-active={activeTabId === tab.id} on:click={() => { activeTabId = tab.id; focusTabs() }}>
+                <button class:mc-active={activeTabId === tab.id} onclick={() => { activeTabId = tab.id; focusTabs() }}>
                     {tab.label}{count ? ` (${count})` : ""}
                 </button>
             {/each}
         </div>
-        <select class="mc-tabselect" bind:value={activeTabId} on:change={focusTabs} aria-label="Active tab">
+        <select class="mc-tabselect" bind:value={activeTabId} onchange={focusTabs} aria-label="Active tab">
             {#each visibleTabs as tab (tab.id)}
                 {@const count = tab.badge?.(dashboard) ?? 0}
                 <option value={tab.id}>{tab.label}{count ? ` (${count})` : ""}</option>
@@ -268,20 +274,15 @@
         <TagFilterButton
             availableTags={menuTags}
             activeTags={activeFilterTags}
-            on:change={(e) => setActiveTags(e.detail.tags)}
+            onchange={setActiveTags}
         />
     </div>
 
     {#if visibleTabs.length === 0}
         <p class="mc-empty">All tabs are hidden. Enable at least one tab in settings.</p>
     {:else}
-        <svelte:component
-            this={activeTab.component}
-            {...activeTab.props(ctx)}
-            on:toggle={activeTab.events?.(ctx).toggle}
-            on:clearProject={activeTab.events?.(ctx).clearProject}
-            on:selectProject={activeTab.events?.(ctx).selectProject}
-        />
+        {@const ActivePane = activeTab.component}
+        <ActivePane {...activeTab.props(ctx)} />
     {/if}
 </div>
 

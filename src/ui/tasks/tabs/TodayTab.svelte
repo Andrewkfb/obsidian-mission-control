@@ -2,24 +2,24 @@
     import type { Dashboard } from "src/tasks/grouping"
     import type { Task } from "src/tasks/Task"
     import TaskItem from "../TaskItem.svelte"
-    import { createEventDispatcher } from "svelte"
     import type { App } from "obsidian"
 
-    export let app: App
-    export let dashboard: Dashboard
-    export let todayISO: string
-    export let activeProject: string | null
+    interface Props {
+        app: App
+        dashboard: Dashboard
+        todayISO: string
+        activeProject: string | null
+        ontoggle: (task: Task) => void
+        onclearProject: () => void
+    }
 
-    const dispatch = createEventDispatcher<{
-        toggle: { task: Task }
-        clearProject: void
-    }>()
+    let { app, dashboard, todayISO, activeProject, ontoggle, onclearProject }: Props = $props()
 </script>
 
 <section class="mc-pane">
     <h2 class="mc-pane-title">Today</h2>
     {#if activeProject}
-        <button class="mc-clear-filter" on:click={() => dispatch("clearProject")}>
+        <button class="mc-clear-filter" onclick={() => onclearProject()}>
             Clear project filter
         </button>
     {/if}
@@ -30,7 +30,7 @@
             <div class="mc-group">
                 <h3 class="mc-group-title">{group.title} <span class="mc-count">{group.tasks.length}</span></h3>
                 {#each group.tasks as task (task.sourcePath + ":" + task.sourceLine)}
-                    <TaskItem {app} {task} {todayISO} on:toggle={(e) => dispatch("toggle", { task: e.detail.task })} />
+                    <TaskItem {app} {task} {todayISO} {ontoggle} />
                 {/each}
             </div>
         {/each}

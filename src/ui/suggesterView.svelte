@@ -1,34 +1,41 @@
 <script lang="ts">
+    import { untrack } from 'svelte'
     import { quintOut } from 'svelte/easing'
     import { slide } from 'svelte/transition'
-	import type { Suggester, TextInputSuggester, suggesterViewOptions } from '../suggester/suggester';
+	import type { TextInputSuggester, suggesterViewOptions } from '../suggester/suggester';
 
-    export let options: suggesterViewOptions
-    export let textInputSuggester: TextInputSuggester<any>
+    interface Props {
+        options: suggesterViewOptions
+        textInputSuggester: TextInputSuggester<any>
+    }
 
-    let suggester: Suggester<any> = textInputSuggester.getSuggester()
+    let { options, textInputSuggester }: Props = $props()
 
-    let suggestions: any[]
-    suggester.suggestionsStore.subscribe((value) => suggestions = value)
-    
-    let selectedItemIndex: number
-    suggester.selectedItemIndexStore.subscribe((value) => selectedItemIndex = value)
-    
+    // Read once, deliberately: this view is mounted per suggester and never
+    // handed a different one, and the stores below feed a `bind:this`, which
+    // needs a stable reference. `untrack` states that intent rather than
+    // leaving the compiler to warn about a captured prop.
+    const suggester = untrack(() => textInputSuggester.getSuggester())
+
+    // Plain store auto-subscription, which still works under runes — no need to
+    // mirror the stores into local state by hand.
+    const suggestions = suggester.suggestionsStore
+    const selectedItemIndex = suggester.selectedItemIndexStore
     const suggestionWrapper = suggester.suggestionsContainer
-
 </script>
 
-{#if suggestions && suggestions.length > 0}
-    <div class="{options.containerClass ?? 'suggestion-container popover suggestion-popover'}"
+{#if $suggestions && $suggestions.length > 0}
+    <div class={options.containerClass ?? 'suggestion-container popover suggestion-popover'}
         role="presentation"
-        on:mousedown="{(e) => e.preventDefault()}"
+        onmousedown={(e) => e.preventDefault()}
         transition:slide={{duration:200, easing: quintOut}}>
-        <div class="{options.suggestionClass ?? 'suggestion'} {options.additionalClasses ?? ''}" class:scrollable="{options.isScrollable}"
+        <div class="{options.suggestionClass ?? 'suggestion'} {options.additionalClasses ?? ''}" class:scrollable={options.isScrollable}
             bind:this={$suggestionWrapper}>
-            {#each suggestions as suggestion, index (suggestion)}
-                <svelte:component this={textInputSuggester.getDisplayElementComponentType()}
-                                {index} {suggestion} {textInputSuggester} {selectedItemIndex}
-                                {... textInputSuggester.getDisplayElementProps(suggestion)}/>
+            {#each $suggestions as suggestion, index (suggestion)}
+                {@const SuggestionItem = textInputSuggester.getDisplayElementComponentType()}
+                <SuggestionItem
+                    {index} {suggestion} {textInputSuggester} selectedItemIndex={$selectedItemIndex}
+                    {...textInputSuggester.getDisplayElementProps(suggestion)} />
             {/each}
         </div>
         {#if options.shortcuts}
@@ -43,7 +50,7 @@
         {/if}
     </div>
 {/if}
-    
+
 
 <style>
     .scrollable{

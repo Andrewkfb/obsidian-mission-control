@@ -5,30 +5,33 @@
 	import Suggestion from './suggestion.svelte';
     import ObsidianIcon from './ObsidianIcon.svelte';
 
-    export let index: number
-    export let textInputSuggester: TextInputSuggester<SearchFile>
-    export let selectedItemIndex: number
-    export let suggestion: Fuse.FuseResult<SearchFile>
+    interface Props {
+        index: number
+        textInputSuggester: TextInputSuggester<SearchFile>
+        selectedItemIndex: number
+        suggestion: Fuse.FuseResult<SearchFile>
+        nameToDisplay: string
+        filePath?: string
+    }
 
-    export let nameToDisplay: string
-    export let filePath: string | undefined = undefined
+    let { index, textInputSuggester, selectedItemIndex, suggestion, nameToDisplay, filePath = undefined }: Props = $props()
 
-    let suggestionItem = suggestion.item
+    const suggestionItem = $derived(suggestion.item)
 </script>
 
 <Suggestion {index} {textInputSuggester} {selectedItemIndex}
     suggestionTitleClass={`suggestion-title home-tab-suggestion-title ${suggestionItem.isUnresolved ? 'is-unresolved' : ''}`}>
     <!-- File name (or alias) -->
-    <svelte:fragment slot="suggestion-title">
+    {#snippet suggestionTitle()}
         <span>{nameToDisplay}</span>
         {#if suggestionItem.fileType != 'markdown'}
             <div class="nav-file-tag home-tab-suggestion-file-tag">
                 {suggestionItem.extension}
             </div>
         {/if}
-    </svelte:fragment>
+    {/snippet}
     <!-- File details -->
-    <svelte:fragment slot="suggestion-extra-content">
+    {#snippet suggestionExtraContent()}
         {#if suggestionItem.isCreated}
             <!-- If the suggestion name is an alias display the actual filename under it -->
             {#if suggestionItem.aliases && suggestionItem.aliases?.includes(nameToDisplay)}
@@ -38,8 +41,8 @@
                 </div>
             {/if}
         {/if}
-    </svelte:fragment>
-    <svelte:fragment slot="suggestion-aux">
+    {/snippet}
+    {#snippet suggestionAux()}
         <!-- Display if a file is not created -->
         {#if !suggestionItem.isCreated}
             <div class="home-tab-suggestion-tip">
@@ -60,5 +63,5 @@
                 <span class="home-tab-file-path">{filePath}</span>
             </div>
         {/if}
-    </svelte:fragment>
+    {/snippet}
 </Suggestion>

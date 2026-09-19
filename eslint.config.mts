@@ -13,6 +13,9 @@ export default defineConfig(
 		'package-lock.json',
 		'tsconfig.json',
 		'scripts/.logic-test.cjs',
+		// Build script and its output, same treatment as esbuild.config.mjs above.
+		'scripts/render-test.build.mjs',
+		'scripts/.render-test.mjs',
 	]),
 	{
 		languageOptions: {

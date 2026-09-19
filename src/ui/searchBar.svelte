@@ -1,12 +1,20 @@
 <script lang="ts">
+	import { untrack } from "svelte";
 	import { filterKeys, type FilterKey } from "src/homeTabSearchbar";
     import type HomeTabSearchBar from "src/homeTabSearchbar";
     
-    export let HomeTabSearchBar: HomeTabSearchBar
-    const searchBarEl = HomeTabSearchBar.searchBarEl
-    const activeExtEl = HomeTabSearchBar.activeExtEl
-    const container = HomeTabSearchBar.suggestionContainerEl
-    let inputValue = ''
+    interface Props {
+        HomeTabSearchBar: HomeTabSearchBar
+    }
+
+    let { HomeTabSearchBar }: Props = $props()
+
+    // Read once: these stores back `bind:this`, so the references must be stable.
+    const searchBarEl = untrack(() => HomeTabSearchBar.searchBarEl)
+    const activeExtEl = untrack(() => HomeTabSearchBar.activeExtEl)
+    const container = untrack(() => HomeTabSearchBar.suggestionContainerEl)
+
+    let inputValue = $state('')
 
     function handleKeydown(e: KeyboardEvent): void{
         // If the input field is empty and a filter is active remove it
@@ -33,7 +41,7 @@
     <div class="home-tab-searchbar">
         <div class='nav-file-tag home-tab-suggestion-file-tag hide' bind:this={$activeExtEl}></div>
         <input type="search" spellcheck="false" placeholder="Type to start search..." bind:value={inputValue} bind:this={$searchBarEl}
-        on:keydown={(e) => handleKeydown(e)}>
+        onkeydown={(e) => handleKeydown(e)}>
     </div>
 </div>
 

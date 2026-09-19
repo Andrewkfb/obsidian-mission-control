@@ -4,22 +4,24 @@
 	import Suggestion from "./suggestion.svelte";
 	import ObsidianIcon from "./ObsidianIcon.svelte";
 
-    export let index: number
-    export let textInputSuggester: TextInputSuggester<string>
-    export let selectedItemIndex: number
-    export let suggestion: Fuse.FuseResult<string>
+    interface Props {
+        index: number
+        textInputSuggester: TextInputSuggester<string>
+        selectedItemIndex: number
+        suggestion: Fuse.FuseResult<string>
+        displayIcon: boolean
+    }
 
-    export let displayIcon: boolean
-
+    let { index, textInputSuggester, selectedItemIndex, suggestion, displayIcon }: Props = $props()
 </script>
 
 <Suggestion {index} {textInputSuggester} {selectedItemIndex}>
-    <svelte:fragment slot="suggestion-title">{suggestion.item}</svelte:fragment>
-    <svelte:fragment slot="suggestion-aux">
+    {#snippet suggestionTitle()}{suggestion.item}{/snippet}
+    {#snippet suggestionAux()}
         {#if displayIcon}
             <span class="suggestion-flair">
                 <ObsidianIcon icon={suggestion.item} size="small" />
             </span>
         {/if}
-    </svelte:fragment>
+    {/snippet}
 </Suggestion>

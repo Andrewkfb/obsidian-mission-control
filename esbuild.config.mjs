@@ -44,6 +44,10 @@ const context = await esbuild.context({
 		esbuildSvelte({
 			compilerOptions: {
 				css: 'injected',
+				// Every component is on runes. Opting in globally makes the
+				// compiler reject legacy syntax rather than silently accepting
+				// it in compatibility mode.
+				runes: true,
 			},
 			preprocess: sveltePreprocess(),
 		}),

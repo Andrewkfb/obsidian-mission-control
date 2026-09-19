@@ -1,12 +1,19 @@
 <script lang="ts">
     import { setIcon } from "obsidian"
 
-    export let icon: string
-    export let size: "small" | "medium" | "logo" = "medium"
-    export let label: string | undefined = undefined
+    interface Props {
+        icon: string
+        size?: "small" | "medium" | "logo"
+        label?: string
+    }
 
-    let element: HTMLSpanElement
-    $: if (element && icon) setIcon(element, icon)
+    let { icon, size = "medium", label = undefined }: Props = $props()
+
+    let element = $state<HTMLSpanElement>()
+
+    $effect(() => {
+        if (element && icon) setIcon(element, icon)
+    })
 </script>
 
 <span

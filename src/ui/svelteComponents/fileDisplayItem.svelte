@@ -2,19 +2,24 @@
     import { type TFile, Keymap, type PaneType, App, Menu } from 'obsidian';
     import { getFileTypeFromExtension } from 'src/utils/getFileTypeUtils';
 	import type { HomeTabSettings } from 'src/settings';
-	import { createEventDispatcher } from 'svelte';
 	import type { LucideIcon } from 'src/utils/lucideIcons';
     import ObsidianIcon from './ObsidianIcon.svelte';
 
-    export let app: App
-    export let file: TFile
-    export let pluginSettings: HomeTabSettings
-    export let contextualMenu: Menu
-    export let customIcon: LucideIcon | undefined = undefined
+    interface Props {
+        app: App
+        file: TFile
+        pluginSettings: HomeTabSettings
+        contextualMenu: Menu
+        customIcon?: LucideIcon
+        /** Fired when the options menu opens, so the parent can track which file it applies to. */
+        onitemMenu?: (file: TFile) => void
+    }
 
-    const filename = file.basename
-    const fileType = getFileTypeFromExtension(file.extension)
-    $: icon = customIcon ?? (fileType === 'markdown'
+    let { app, file, pluginSettings, contextualMenu, customIcon = undefined, onitemMenu = undefined }: Props = $props()
+
+    const filename = $derived(file.basename)
+    const fileType = $derived(getFileTypeFromExtension(file.extension))
+    const icon = $derived(customIcon ?? (fileType === 'markdown'
         ? 'file-text'
         : fileType === 'image'
         ? 'file-image'
@@ -22,9 +27,7 @@
         ? 'file-video'
         : fileType === 'audio'
         ? 'file-audio'
-        : 'file')
-
-    const dispatch = createEventDispatcher<{itemMenu:{file: TFile}}>()
+        : 'file'))
 
     function handleFileOpening(file: TFile, newTab?: boolean | PaneType){
         const leaf = app.workspace.getLeaf(newTab)
@@ -39,16 +42,16 @@
     }
 </script>
 
-<div class="home-tab-file-item" class:use-accent-color="{pluginSettings.selectionHighlight === 'accentColor'}"
+<div class="home-tab-file-item" class:use-accent-color={pluginSettings.selectionHighlight === 'accentColor'}
     role="button" tabindex="0"
-    on:mousedown|preventDefault="{e => handleMouseClick(e, file)}"
-    on:keydown={(e) => { if (e.key === 'Enter') handleFileOpening(file, Keymap.isModEvent(e)) }}>
+    onmousedown={(e) => { e.preventDefault(); handleMouseClick(e, file) }}
+    onkeydown={(e) => { if (e.key === 'Enter') handleFileOpening(file, Keymap.isModEvent(e)) }}>
     
     <button class="home-tab-file-item-remove-btn" aria-label="File options"
-        on:mousedown|stopPropagation
-        on:click={(e) => {
+        onmousedown={(e) => e.stopPropagation()}
+        onclick={(e) => {
             contextualMenu.showAtMouseEvent(e)
-            dispatch('itemMenu', {file: file})
+            onitemMenu?.(file)
             }}>
         <ObsidianIcon icon="more-horizontal" />
     </button>

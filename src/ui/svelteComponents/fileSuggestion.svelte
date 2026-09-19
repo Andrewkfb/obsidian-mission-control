@@ -4,14 +4,17 @@
 	import type { TextInputSuggester } from "src/suggester/suggester";
 	import Suggestion from "./suggestion.svelte";
 
-    export let index: number
-    export let textInputSuggester: TextInputSuggester<TFile>
-    export let selectedItemIndex: number
-    export let suggestion: Fuse.FuseResult<TFile>
+    interface Props {
+        index: number
+        textInputSuggester: TextInputSuggester<TFile>
+        selectedItemIndex: number
+        suggestion: Fuse.FuseResult<TFile>
+        displayName?: string
+    }
 
-    export let displayName: string | undefined = undefined
+    let { index, textInputSuggester, selectedItemIndex, suggestion, displayName = undefined }: Props = $props()
 </script>
 
 <Suggestion {index} {textInputSuggester} {selectedItemIndex}>
-    <svelte:fragment slot="suggestion-title">{displayName ?? suggestion.item.basename}</svelte:fragment>
+    {#snippet suggestionTitle()}{displayName ?? suggestion.item.basename}{/snippet}
 </Suggestion>

@@ -2,14 +2,16 @@
     import type { Dashboard } from "src/tasks/grouping"
     import type { Task } from "src/tasks/Task"
     import TaskItem from "../TaskItem.svelte"
-    import { createEventDispatcher } from "svelte"
     import type { App } from "obsidian"
 
-    export let app: App
-    export let dashboard: Dashboard
-    export let todayISO: string
+    interface Props {
+        app: App
+        dashboard: Dashboard
+        todayISO: string
+        ontoggle: (task: Task) => void
+    }
 
-    const dispatch = createEventDispatcher<{ toggle: { task: Task } }>()
+    let { app, dashboard, todayISO, ontoggle }: Props = $props()
 </script>
 
 <section class="mc-pane">
@@ -21,7 +23,7 @@
             <div class="mc-group">
                 <h3 class="mc-group-title">{group.title} <span class="mc-count">{group.tasks.length}</span></h3>
                 {#each group.tasks as task (task.sourcePath + ":" + task.sourceLine)}
-                    <TaskItem {app} {task} {todayISO} on:toggle={(e) => dispatch("toggle", { task: e.detail.task })} />
+                    <TaskItem {app} {task} {todayISO} {ontoggle} />
                 {/each}
             </div>
         {/each}

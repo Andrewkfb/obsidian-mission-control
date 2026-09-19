@@ -1,35 +1,53 @@
 <script lang="ts">
+	import type { Snippet } from "svelte";
 	import type { Suggester, TextInputSuggester } from "src/suggester/suggester";
 
-    export let index: number
-    // export let suggester: Suggester<any>
-    export let textInputSuggester: TextInputSuggester<any>
-    export let selectedItemIndex: number
+    interface Props {
+        index: number
+        textInputSuggester: TextInputSuggester<any>
+        selectedItemIndex: number
+        suggestionItemClass?: string
+        suggestionContentClass?: string
+        suggestionTitleClass?: string
+        suggestionAuxClass?: string
+        // Named slots are snippet props under runes.
+        suggestionTitle?: Snippet
+        suggestionExtraContent?: Snippet
+        suggestionAux?: Snippet
+    }
 
-    let suggester: Suggester<any> = textInputSuggester.getSuggester()
+    let {
+        index,
+        textInputSuggester,
+        selectedItemIndex,
+        suggestionItemClass = undefined,
+        suggestionContentClass = undefined,
+        suggestionTitleClass = undefined,
+        suggestionAuxClass = undefined,
+        suggestionTitle = undefined,
+        suggestionExtraContent = undefined,
+        suggestionAux = undefined,
+    }: Props = $props()
 
-    export let suggestionItemClass: string | undefined = undefined
-    export let suggestionContentClass: string | undefined = undefined
-    export let suggestionTitleClass: string | undefined = undefined
-    export let suggestionAuxClass: string | undefined = undefined
+    const suggester: Suggester<any> = $derived(textInputSuggester.getSuggester())
 </script>
 
-<div class="{suggestionItemClass ?? 'suggestion-item mod-complex'}" 
-    class:is-selected="{selectedItemIndex === index}"
+<div class={suggestionItemClass ?? 'suggestion-item mod-complex'}
+    class:is-selected={selectedItemIndex === index}
     role="option"
     aria-selected={selectedItemIndex === index}
     tabindex="-1"
-    on:mousemove="{() => suggester.setSelectedItemIndex(index)}"
-    on:click="{() => textInputSuggester.useSelectedItem(suggester.getSelectedItem())}"
-    on:keydown="{(e) => { if (e.key === 'Enter') textInputSuggester.useSelectedItem(suggester.getSelectedItem()) }}"
-    on:auxclick="{(e) => {if(e.button === 1){textInputSuggester.useSelectedItem(suggester.getSelectedItem(), true)}}}">
-    <div class="{suggestionContentClass ?? 'suggestion-content'}">
-        <div class="{suggestionTitleClass ?? 'suggestion-title'}">
-            <slot name="suggestion-title"/>
+    onmousemove={() => suggester.setSelectedItemIndex(index)}
+    onclick={() => textInputSuggester.useSelectedItem(suggester.getSelectedItem())}
+    onkeydown={(e) => { if (e.key === 'Enter') textInputSuggester.useSelectedItem(suggester.getSelectedItem()) }}
+    onauxclick={(e) => { if (e.button === 1) textInputSuggester.useSelectedItem(suggester.getSelectedItem(), true) }}>
+    <div class={suggestionContentClass ?? 'suggestion-content'}>
+        <div class={suggestionTitleClass ?? 'suggestion-title'}>
+            {@render suggestionTitle?.()}
         </div>
-        <slot name="suggestion-extra-content"/>
+        {@render suggestionExtraContent?.()}
     </div>
-    <div class="{suggestionAuxClass ?? 'suggestion-aux'}">
-        <slot name="suggestion-aux"/>
+    <div class={suggestionAuxClass ?? 'suggestion-aux'}>
+        {@render suggestionAux?.()}
     </div>
 </div>

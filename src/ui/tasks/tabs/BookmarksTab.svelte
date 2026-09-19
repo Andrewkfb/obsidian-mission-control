@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { untrack } from "svelte"
     import { App, Menu, TFile } from "obsidian"
     import { IconSelectionModal } from "src/iconSelectionModal"
     import { bookmarkedFiles as bookmarkedFilesStore, pluginSettingsStore } from "src/store"
@@ -6,22 +7,24 @@
     import type { HomeTabSettings } from "src/settings"
     import FileDisplayItem from "src/ui/svelteComponents/fileDisplayItem.svelte"
 
-    export let app: App
-    export let bookmarkedFileManager: BookmarkedFileManager
+    interface Props {
+        app: App
+        bookmarkedFileManager: BookmarkedFileManager
+    }
 
-    let fileList: BookmarkedFile[] = []
-    let pluginSettings: HomeTabSettings
+    let { app, bookmarkedFileManager }: Props = $props()
 
-    $: fileList = $bookmarkedFilesStore ?? []
-    $: pluginSettings = $pluginSettingsStore
+    const fileList: BookmarkedFile[] = $derived($bookmarkedFilesStore ?? [])
+    const pluginSettings: HomeTabSettings = $derived($pluginSettingsStore)
 
     let selectedFile: TFile
 
-    const selectIconModal = new IconSelectionModal(app, undefined, (icon) =>
+    // Built once per pane: `app` and the manager never change for an instance.
+    const selectIconModal = untrack(() => new IconSelectionModal(app, undefined, (icon) =>
         bookmarkedFileManager.updateFileIcon(selectedFile, icon)
-    )
+    ))
 
-    const contextualMenu = new Menu()
+    const contextualMenu = untrack(() => new Menu()
         .addItem((item) =>
             item.setTitle("Remove bookmark").setIcon("trash-2").onClick(() =>
                 bookmarkedFileManager.removeBookmark(selectedFile)
@@ -31,7 +34,7 @@
         .addItem((item) =>
             item.setTitle("Set custom icon").setIcon("plus").onClick(() => selectIconModal.open())
         )
-        .setUseNativeMenu(app.vault.config.nativeMenus)
+        .setUseNativeMenu(app.vault.config.nativeMenus))
 </script>
 
 <div class="mc-files-pane">
@@ -46,7 +49,7 @@
                     {app}
                     {pluginSettings}
                     {contextualMenu}
-                    on:itemMenu={(e) => (selectedFile = e.detail.file)}
+                    onitemMenu={(f) => (selectedFile = f)}
                 />
             {/each}
         </div>

@@ -57,9 +57,12 @@ Requires Node.js 18 or newer.
 ```bash
 npm ci
 npm run dev
-npm test
+npm test          # logic tests + component render tests
 npm run build
+npm run check     # lint + test + typecheck + build
 ```
+
+The UI is written with [Svelte 5 runes](https://svelte.dev/docs/svelte/what-are-runes); the compiler runs with `runes: true`, so legacy syntax is rejected rather than silently compiled in compatibility mode.
 
 Set `VAULT_PLUGIN_DIR` and run `npm run deploy` to copy a production build into a development vault.
 

@@ -7,38 +7,42 @@
     import TaskDashboard from "./tasks/TaskDashboard.svelte"
     import ObsidianIcon from "./svelteComponents/ObsidianIcon.svelte"
 
-    export let HomeTabSearchBar: HomeTabSearchBar
-    export let plugin: HomeTab
+    interface Props {
+        HomeTabSearchBar: HomeTabSearchBar
+        plugin: HomeTab
+    }
 
-    $: settings = $pluginSettingsStore
-    $: logoIcon = settings.logoType === "lucideIcon" ? settings.logo.lucideIcon : "obsidian"
-    $: logoFile = plugin.app.vault.getAbstractFileByPath(settings.logo.imagePath)
-    $: localLogoUrl = logoFile instanceof TFile ? plugin.app.vault.getResourcePath(logoFile) : ""
-    $: titleFont = settings.customFont === "interfaceFont"
+    let { HomeTabSearchBar, plugin }: Props = $props()
+
+    const settings = $derived($pluginSettingsStore)
+    const logoIcon = $derived(settings.logoType === "lucideIcon" ? settings.logo.lucideIcon : "obsidian")
+    const logoFile = $derived(plugin.app.vault.getAbstractFileByPath(settings.logo.imagePath))
+    const localLogoUrl = $derived(logoFile instanceof TFile ? plugin.app.vault.getResourcePath(logoFile) : "")
+    const titleFont = $derived(settings.customFont === "interfaceFont"
         ? "var(--interface-font)"
         : settings.customFont === "textFont"
         ? "var(--font-text)"
         : settings.customFont === "monospaceFont"
         ? "var(--font-monospace)"
-        : settings.font
-    $: titleColor = settings.fontColorType === "accentColor"
+        : settings.font)
+    const titleColor = $derived(settings.fontColorType === "accentColor"
         ? "var(--interactive-accent)"
         : settings.fontColorType === "custom"
         ? settings.fontColor
-        : "inherit"
-    $: iconColor = settings.iconColorType === "accentColor"
+        : "inherit")
+    const iconColor = $derived(settings.iconColorType === "accentColor"
         ? "var(--interactive-accent)"
         : settings.iconColorType === "custom"
         ? settings.iconColor
-        : "currentColor"
-    $: appearance = [
+        : "currentColor")
+    const appearance = $derived([
         `--mc-logo-scale:${settings.logoScale}`,
         `--mc-title-font:${titleFont}`,
         `--mc-title-size:${settings.fontSize}`,
         `--mc-title-weight:${settings.fontWeight}`,
         `--mc-title-color:${titleColor}`,
         `--mc-icon-color:${iconColor}`,
-    ].join(";")
+    ].join(";"))
 </script>
 
 <main class="home-tab" style={appearance}>

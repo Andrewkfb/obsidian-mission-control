@@ -1,29 +1,31 @@
 <script lang="ts">
-    import { onDestroy, onMount, createEventDispatcher } from "svelte"
+    import { onMount } from "svelte"
     import { setIcon } from "obsidian"
 
-    // List of tag names (no '#') that should appear in the menu.
-    export let availableTags: string[]
-    // Currently-active filter tags.
-    export let activeTags: string[]
+    interface Props {
+        /** Tag names (no '#') that should appear in the menu. */
+        availableTags: string[]
+        /** Currently-active filter tags. */
+        activeTags: string[]
+        onchange: (tags: string[]) => void
+    }
 
-    const dispatch = createEventDispatcher<{ change: { tags: string[] } }>()
+    let { availableTags, activeTags, onchange }: Props = $props()
 
-    let open = false
-    let iconEl: HTMLElement
-    let rootEl: HTMLElement
+    let open = $state(false)
+    let iconEl = $state<HTMLElement>()
+    let rootEl = $state<HTMLElement>()
 
-    $: hasFilter = activeTags.length > 0
+    const hasFilter = $derived(activeTags.length > 0)
 
     function toggle(tag: string) {
-        const next = activeTags.includes(tag)
+        onchange(activeTags.includes(tag)
             ? activeTags.filter(t => t !== tag)
-            : [...activeTags, tag]
-        dispatch("change", { tags: next })
+            : [...activeTags, tag])
     }
 
     function clear() {
-        dispatch("change", { tags: [] })
+        onchange([])
     }
 
     function onDocClick(e: MouseEvent) {
@@ -38,10 +40,10 @@
         if (iconEl) setIcon(iconEl, "filter")
         document.addEventListener("click", onDocClick)
         document.addEventListener("keydown", onKey)
-    })
-    onDestroy(() => {
-        document.removeEventListener("click", onDocClick)
-        document.removeEventListener("keydown", onKey)
+        return () => {
+            document.removeEventListener("click", onDocClick)
+            document.removeEventListener("keydown", onKey)
+        }
     })
 </script>
 
@@ -50,7 +52,7 @@
         class="mc-filter-btn"
         class:mc-filter-active={hasFilter}
         aria-label={hasFilter ? `Tag filter (${activeTags.length} active)` : "Tag filter"}
-        on:click={() => (open = !open)}
+        onclick={() => (open = !open)}
     >
         <span bind:this={iconEl} class="mc-filter-icon"></span>
         {#if hasFilter}<span class="mc-filter-dot"></span>{/if}
@@ -61,7 +63,7 @@
             <div class="mc-filter-menu-head">
                 <span>Filter by tag</span>
                 {#if hasFilter}
-                    <button class="mc-filter-clear" on:click={clear}>Clear</button>
+                    <button class="mc-filter-clear" onclick={clear}>Clear</button>
                 {/if}
             </div>
             {#if availableTags.length === 0}
@@ -71,7 +73,7 @@
                     {#each availableTags as tag (tag)}
                         <li>
                             <label>
-                                <input type="checkbox" checked={activeTags.includes(tag)} on:change={() => toggle(tag)} />
+                                <input type="checkbox" checked={activeTags.includes(tag)} onchange={() => toggle(tag)} />
                                 <span>#{tag}</span>
                             </label>
                         </li>

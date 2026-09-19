@@ -1,16 +1,18 @@
 <script lang="ts">
-    import { createEventDispatcher } from "svelte"
     import { TFile, type App } from "obsidian"
     import type { Task } from "src/tasks/Task"
     import { relativeLabel } from "src/tasks/dates"
     import { overdueByDays } from "src/tasks/grouping"
     import { pluginSettingsStore } from "src/store"
 
-    export let app: App
-    export let task: Task
-    export let todayISO: string
+    interface Props {
+        app: App
+        task: Task
+        todayISO: string
+        ontoggle: (task: Task) => void
+    }
 
-    const dispatch = createEventDispatcher<{ toggle: { task: Task } }>()
+    let { app, task, todayISO, ontoggle }: Props = $props()
 
     const PRIORITY_LABEL: Record<string, string> = {
         highest: "🔺",
@@ -23,17 +25,24 @@
 
     // Optimistic local state — immediately reflects the toggle visually
     // while the async vault write happens in the background.
-    let pending = false
+    let pending = $state(false)
+    let pendingTimer: number | undefined
 
     function handleCheckbox(e: MouseEvent | KeyboardEvent) {
         e.stopPropagation()
         if (pending) return
         pending = true
-        dispatch("toggle", { task })
+        ontoggle(task)
         // Reset pending after a short window; the TaskIndex watcher will
         // re-render the row with the real state once the vault write settles.
-        setTimeout(() => { pending = false }, 1500)
+        if (pendingTimer !== undefined) window.clearTimeout(pendingTimer)
+        pendingTimer = window.setTimeout(() => { pending = false }, 1500)
     }
+
+    // Don't leave a timer running against a destroyed row.
+    $effect(() => () => {
+        if (pendingTimer !== undefined) window.clearTimeout(pendingTimer)
+    })
 
     function openTask(newTab: boolean) {
         const file = app.vault.getAbstractFileByPath(task.sourcePath)
@@ -60,7 +69,7 @@
         if (last < text.length) out.push({ kind: "text", value: text.slice(last) })
         return out
     }
-    $: segments = parseSegments(task.text)
+    const segments = $derived(parseSegments(task.text))
 
     function openLink(e: MouseEvent | KeyboardEvent, target: string) {
         e.stopPropagation()
@@ -68,14 +77,14 @@
         void app.workspace.openLinkText(target, task.sourcePath, e.ctrlKey || e.metaKey)
     }
 
-    $: overdueDays = overdueByDays(task, todayISO)
-    $: dateLabel = task.due
+    const overdueDays = $derived(overdueByDays(task, todayISO))
+    const dateLabel = $derived(task.due
         ? relativeLabel(task.due, todayISO)
         : task.scheduled
         ? relativeLabel(task.scheduled, todayISO)
-        : ""
+        : "")
     // Optimistic checked state: flip immediately on pending, revert when task prop updates.
-    $: displayChecked = pending ? !task.checked : task.checked
+    const displayChecked = $derived(pending ? !task.checked : task.checked)
 </script>
 
 <div
@@ -83,8 +92,8 @@
     class:mc-checked={displayChecked}
     role="button"
     tabindex="0"
-    on:click={(e) => { if (!(e.target instanceof Element && e.target.closest('.mc-task-checkbox-btn'))) openTask(e.ctrlKey || e.metaKey) }}
-    on:keydown={(e) => { if (e.key === "Enter") openTask(false) }}
+    onclick={(e) => { if (!(e.target instanceof Element && e.target.closest('.mc-task-checkbox-btn'))) openTask(e.ctrlKey || e.metaKey) }}
+    onkeydown={(e) => { if (e.key === "Enter") openTask(false) }}
 >
     <!-- Checkbox — separate interactive element so it doesn't open the file -->
     <button
@@ -93,8 +102,8 @@
         class:mc-pending={pending}
         aria-label={displayChecked ? "Mark as open" : "Mark as done"}
         aria-pressed={displayChecked}
-        on:click|stopPropagation={handleCheckbox}
-        on:keydown|stopPropagation={(e) => { if (e.key === " " || e.key === "Enter") handleCheckbox(e) }}
+        onclick={handleCheckbox}
+        onkeydown={(e) => { e.stopPropagation(); if (e.key === " " || e.key === "Enter") handleCheckbox(e) }}
     >
         {#if displayChecked}
             ✓
@@ -110,8 +119,8 @@
             {#if seg.kind === "text"}{seg.value}{:else}<a
                 class="mc-task-link internal-link"
                 href={seg.target}
-                on:click={(e) => openLink(e, seg.target)}
-                on:keydown={(e) => { if (e.key === "Enter") openLink(e, seg.target) }}
+                onclick={(e) => openLink(e, seg.target)}
+                onkeydown={(e) => { if (e.key === "Enter") openLink(e, seg.target) }}
             >{seg.display}</a>{/if}
         {/each}
     </span>

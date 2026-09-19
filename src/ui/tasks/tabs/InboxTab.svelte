@@ -1,22 +1,29 @@
 <script lang="ts">
     import { App, Menu, TFile, TFolder, debounce, type TAbstractFile } from "obsidian"
-    import { onMount } from "svelte"
+    import { onMount, untrack } from "svelte"
     import { pluginSettingsStore } from "src/store"
     import type { HomeTabSettings } from "src/settings"
     import FileDisplayItem from "src/ui/svelteComponents/fileDisplayItem.svelte"
     import { isDirectChildOf } from "src/utils/paths"
 
-    export let app: App
+    interface Props {
+        app: App
+    }
 
-    let fileList: TFile[] = []
-    let folderExists = false
-    let pluginSettings: HomeTabSettings
-    let inboxFolder: string = ''
+    let { app }: Props = $props()
 
-    $: pluginSettings = $pluginSettingsStore
-    $: inboxFolder = $pluginSettingsStore?.inboxFolder ?? '01 Inbox'
-    // Also runs on init, so there's no need to load again on mount.
-    $: inboxFolder, loadFiles()
+    let fileList = $state<TFile[]>([])
+    let folderExists = $state(false)
+
+    const pluginSettings: HomeTabSettings = $derived($pluginSettingsStore)
+    const inboxFolder: string = $derived($pluginSettingsStore?.inboxFolder ?? '01 Inbox')
+
+    // Reload whenever the configured folder changes. Runs on init too, so there
+    // is no need to load again on mount.
+    $effect(() => {
+        inboxFolder
+        loadFiles()
+    })
 
     function loadFiles() {
         const entry = app.vault.getAbstractFileByPath(inboxFolder)
@@ -57,7 +64,8 @@
         }
     })
 
-    const contextualMenu = new Menu().setUseNativeMenu(app.vault.config.nativeMenus)
+    // Built once per pane: `app` never changes for an instance.
+    const contextualMenu = untrack(() => new Menu().setUseNativeMenu(app.vault.config.nativeMenus))
 </script>
 
 <div class="mc-files-pane">

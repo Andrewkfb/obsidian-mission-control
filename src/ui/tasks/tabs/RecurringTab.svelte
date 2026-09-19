@@ -3,14 +3,16 @@
     import type { Task } from "src/tasks/Task"
     import { relativeLabel } from "src/tasks/dates"
     import TaskItem from "../TaskItem.svelte"
-    import { createEventDispatcher } from "svelte"
     import type { App } from "obsidian"
 
-    export let app: App
-    export let dashboard: Dashboard
-    export let todayISO: string
+    interface Props {
+        app: App
+        dashboard: Dashboard
+        todayISO: string
+        ontoggle: (task: Task) => void
+    }
 
-    const dispatch = createEventDispatcher<{ toggle: { task: Task } }>()
+    let { app, dashboard, todayISO, ontoggle }: Props = $props()
 </script>
 
 <section class="mc-pane">
@@ -21,7 +23,7 @@
         <div class="mc-group">
             {#each dashboard.recurring as entry (entry.task.sourcePath + ":" + entry.task.sourceLine)}
                 <div class="mc-recurring-entry">
-                    <TaskItem {app} task={entry.task} {todayISO} on:toggle={(e) => dispatch("toggle", { task: e.detail.task })} />
+                    <TaskItem {app} task={entry.task} {todayISO} {ontoggle} />
                     <p class="mc-recurring-meta">
                         🔁 {entry.task.recurrence}
                         {#if entry.nextDate}<span class="mc-recurring-next"> · next {relativeLabel(entry.nextDate, todayISO)}</span>{/if}

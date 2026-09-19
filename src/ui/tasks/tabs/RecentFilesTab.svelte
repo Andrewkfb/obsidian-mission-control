@@ -1,28 +1,31 @@
 <script lang="ts">
+    import { untrack } from "svelte"
     import { App, Menu, TFile } from "obsidian"
     import { recentFiles as recentFilesStore, pluginSettingsStore } from "src/store"
     import type { RecentFileManager, RecentFile } from "src/recentFiles"
     import type { HomeTabSettings } from "src/settings"
     import FileDisplayItem from "src/ui/svelteComponents/fileDisplayItem.svelte"
 
-    export let app: App
-    export let recentFileManager: RecentFileManager
+    interface Props {
+        app: App
+        recentFileManager: RecentFileManager
+    }
 
-    let fileList: RecentFile[] = []
-    let pluginSettings: HomeTabSettings
+    let { app, recentFileManager }: Props = $props()
 
-    $: fileList = $recentFilesStore ?? []
-    $: pluginSettings = $pluginSettingsStore
+    const fileList: RecentFile[] = $derived($recentFilesStore ?? [])
+    const pluginSettings: HomeTabSettings = $derived($pluginSettingsStore)
 
     let selectedFile: TFile
 
-    const contextualMenu = new Menu()
+    // Built once per pane: `app` and the manager never change for an instance.
+    const contextualMenu = untrack(() => new Menu()
         .addItem((item) =>
             item.setTitle("Hide file").setIcon("eye-off").onClick(() =>
                 recentFileManager.removeRecentFile(selectedFile)
             )
         )
-        .setUseNativeMenu(app.vault.config.nativeMenus)
+        .setUseNativeMenu(app.vault.config.nativeMenus))
 </script>
 
 <div class="mc-files-pane">
@@ -36,7 +39,7 @@
                     {app}
                     {pluginSettings}
                     {contextualMenu}
-                    on:itemMenu={(e) => (selectedFile = e.detail.file)}
+                    onitemMenu={(f) => (selectedFile = f)}
                 />
             {/each}
         </div>

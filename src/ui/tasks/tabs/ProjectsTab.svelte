@@ -1,14 +1,16 @@
 <script lang="ts">
     import { TFile, type App } from "obsidian"
     import type { Dashboard, ProjectSummary } from "src/tasks/grouping"
-    import { createEventDispatcher } from "svelte"
     import { pluginSettingsStore } from "src/store"
 
-    export let app: App
-    export let dashboard: Dashboard
-    export let activeProject: string | null
+    interface Props {
+        app: App
+        dashboard: Dashboard
+        activeProject: string | null
+        onselectProject: (project: ProjectSummary) => void
+    }
 
-    const dispatch = createEventDispatcher<{ selectProject: { project: ProjectSummary } }>()
+    let { app, dashboard, activeProject, onselectProject }: Props = $props()
 
     function openProject(p: ProjectSummary, newTab: boolean) {
         const file = app.vault.getAbstractFileByPath(p.sourcePath)
@@ -31,11 +33,11 @@
         {#each dashboard.projects as p (p.sourcePath)}
             <div class="mc-project-block" class:mc-selected={activeProject === p.sourcePath}>
                 <div class="mc-project-row">
-                    <button class="mc-project-name" on:click={() => dispatch("selectProject", { project: p })} title="Filter dashboard to this project">
+                    <button class="mc-project-name" onclick={() => onselectProject(p)} title="Filter dashboard to this project">
                         {p.project}
                     </button>
                     <span class="mc-project-count">{p.openCount}</span>
-                    <button class="mc-project-open" on:click={(e) => openProject(p, e.ctrlKey || e.metaKey)} aria-label="Open project note">↗</button>
+                    <button class="mc-project-open" onclick={(e) => openProject(p, e.ctrlKey || e.metaKey)} aria-label="Open project note">↗</button>
                 </div>
                 {#if p.headings.length > 0 && $pluginSettingsStore?.showHeadings}
                     <div class="mc-project-headings">
@@ -43,8 +45,8 @@
                             <a
                                 class="mc-project-heading"
                                 href={`${p.project}#${h}`}
-                                on:click={(e) => openHeading(e, p, h)}
-                                on:keydown={(e) => { if (e.key === "Enter") openHeading(e, p, h) }}
+                                onclick={(e) => openHeading(e, p, h)}
+                                onkeydown={(e) => { if (e.key === "Enter") openHeading(e, p, h) }}
                             >{h}</a>
                         {/each}
                     </div>

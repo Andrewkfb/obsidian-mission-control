@@ -5,24 +5,26 @@
 	import Suggestion from "./suggestion.svelte";
     import ObsidianIcon from "./ObsidianIcon.svelte";
 
-    export let index: number
-    export let textInputSuggester: TextInputSuggester<ResultNoteApi>
-    export let selectedItemIndex: number
+    interface Props {
+        index: number
+        textInputSuggester: TextInputSuggester<ResultNoteApi>
+        selectedItemIndex: number
+        suggestion: ResultNoteApi
+        basename: string
+        excerpt: string
+    }
 
-    export let suggestion: ResultNoteApi
+    let { index, textInputSuggester, selectedItemIndex, suggestion, basename, excerpt }: Props = $props()
 
-    export let basename: string
-    export let excerpt: string
-    
-    let fileExtension = getExtensionFromFilename(suggestion.path)
-    let folderPath = suggestion.path.replace(`${suggestion.basename}.${fileExtension}`, '').slice(0, -1)
+    const fileExtension = $derived(getExtensionFromFilename(suggestion.path))
+    const folderPath = $derived(suggestion.path.replace(`${suggestion.basename}.${fileExtension}`, '').slice(0, -1))
 </script>
 
 <Suggestion {index} {textInputSuggester} {selectedItemIndex}
     suggestionItemClass={'suggestion-item omnisearch-result'}
     suggestionContentClass={''}
     suggestionTitleClass={'omnisearch-result__title-container'}>
-    <svelte:fragment slot="suggestion-title">
+    {#snippet suggestionTitle()}
         <span class="omnisearch-result__title">
             <span>
                 <ObsidianIcon icon="file" size="small" />
@@ -33,8 +35,8 @@
                 <span class="omnisearch-result__counter">{`${suggestion.matches.length} match${suggestion.matches.length > 1 ? 'es' : ''}`}</span>
             {/if}
         </span>
-    </svelte:fragment>
-    <svelte:fragment slot="suggestion-extra-content">
+    {/snippet}
+    {#snippet suggestionExtraContent()}
         {#if folderPath.length > 0}
             <div class="omnisearch-result__folder-path">
                 <ObsidianIcon icon="folder-open" size="small" />
@@ -44,5 +46,5 @@
         <div class="omnisearch-result__body">
             {excerpt}
         </div>
-    </svelte:fragment>
+    {/snippet}
 </Suggestion>
