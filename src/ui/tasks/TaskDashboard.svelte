@@ -236,7 +236,8 @@
 
     function setActiveTags(tags: string[]) {
         plugin.settings.activeFilterTags = tags
-        plugin.saveSettings()
+        // Ticking through several tags in the filter menu is a burst of clicks.
+        plugin.queueSaveSettings()
     }
 </script>
 

@@ -88,7 +88,7 @@ export class BookmarkedFileManager extends Component {
                 iconId: item.iconId
             }))
             this.plugin.settings.bookmarkedFileStore = storeObj
-            this.plugin.saveSettings()
+            this.plugin.queueSaveSettings()
         }
     }
 

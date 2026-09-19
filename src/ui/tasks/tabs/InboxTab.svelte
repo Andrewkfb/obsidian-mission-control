@@ -1,23 +1,27 @@
 <script lang="ts">
-    import { App, Menu, TFile, TFolder, type EventRef } from "obsidian"
-    import { onMount, onDestroy } from "svelte"
+    import { App, Menu, TFile, TFolder, debounce, type TAbstractFile } from "obsidian"
+    import { onMount } from "svelte"
     import { pluginSettingsStore } from "src/store"
     import type { HomeTabSettings } from "src/settings"
     import FileDisplayItem from "src/ui/svelteComponents/fileDisplayItem.svelte"
+    import { isDirectChildOf } from "src/utils/paths"
 
     export let app: App
 
     let fileList: TFile[] = []
+    let folderExists = false
     let pluginSettings: HomeTabSettings
     let inboxFolder: string = ''
 
     $: pluginSettings = $pluginSettingsStore
     $: inboxFolder = $pluginSettingsStore?.inboxFolder ?? '01 Inbox'
+    // Also runs on init, so there's no need to load again on mount.
     $: inboxFolder, loadFiles()
 
     function loadFiles() {
         const entry = app.vault.getAbstractFileByPath(inboxFolder)
-        if (!entry || !(entry instanceof TFolder)) {
+        folderExists = entry instanceof TFolder
+        if (!(entry instanceof TFolder)) {
             fileList = []
             return
         }
@@ -26,20 +30,31 @@
             .sort((a, b) => b.stat.mtime - a.stat.mtime)
     }
 
-    let refs: EventRef[] = []
+    // Vault events cover the whole vault, and `modify` fires on every save of
+    // any note anywhere. Re-walking and re-sorting the inbox for each one made
+    // editing an unrelated note cost a folder scan per keystroke-save. Scope to
+    // the inbox's own direct children — all `loadFiles` lists — and collapse
+    // bursts. `modify` is kept because it reorders the mtime-sorted list.
+    const reload = debounce(loadFiles, 200, true)
+
+    function onVaultChange(file: TAbstractFile, oldPath?: string) {
+        // A rename can move a file into or out of the inbox, so check both ends.
+        const touchesInbox = isDirectChildOf(file.path, inboxFolder)
+            || (oldPath !== undefined && isDirectChildOf(oldPath, inboxFolder))
+        if (touchesInbox) reload()
+    }
 
     onMount(() => {
-        loadFiles()
-        refs = [
-            app.vault.on('create', loadFiles),
-            app.vault.on('delete', loadFiles),
-            app.vault.on('rename', loadFiles),
-            app.vault.on('modify', loadFiles),
+        const refs = [
+            app.vault.on('create', (f) => onVaultChange(f)),
+            app.vault.on('delete', (f) => onVaultChange(f)),
+            app.vault.on('rename', (f, oldPath) => onVaultChange(f, oldPath)),
+            app.vault.on('modify', (f) => onVaultChange(f)),
         ]
-    })
-
-    onDestroy(() => {
-        refs.forEach(ref => app.vault.offref(ref))
+        return () => {
+            reload.cancel()
+            refs.forEach(ref => app.vault.offref(ref))
+        }
     })
 
     const contextualMenu = new Menu().setUseNativeMenu(app.vault.config.nativeMenus)
@@ -50,7 +65,7 @@
         <p class="mc-empty">No inbox folder configured. Set one in settings.</p>
     {:else if fileList.length === 0}
         <p class="mc-empty">
-            {app.vault.getAbstractFileByPath(inboxFolder) ? 'Inbox is empty.' : `Folder "${inboxFolder}" not found.`}
+            {folderExists ? 'Inbox is empty.' : `Folder "${inboxFolder}" not found.`}
         </p>
     {:else}
         <div class="mc-files-grid">

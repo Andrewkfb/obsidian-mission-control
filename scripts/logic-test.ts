@@ -5,6 +5,7 @@ import { parseTasks, parseTaskLine } from '../src/tasks/TaskParser'
 import { buildDashboard } from '../src/tasks/grouping'
 import { getToday, addDaysISO, msUntilNextDayStart } from '../src/tasks/dates'
 import { applyToggleToLine, buildNextRecurrence, resolveTaskLine, toggleComplete } from '../src/tasks/TaskWriter'
+import { isInFolder, isDirectChildOf } from '../src/utils/paths'
 import type { Vault } from 'obsidian'
 import { computeNextDate } from '../src/tasks/recurrence'
 import type { Task } from '../src/tasks/Task'
@@ -65,6 +66,27 @@ console.log('TaskParser:')
     assert(parseTaskLine('- a bullet, not a task', 'P.md', 0, 'P') === null, 'plain bullet returns null')
     const multi = parseTasks('- [ ] a\nsome text\n- [x] b', 'P.md', 'P')
     assert(multi.length === 2, 'parseTasks finds 2 tasks in mixed content')
+}
+
+// ─── utils/paths ─────────────────────────────────────────────────────────────
+// These gate whether a vault event refreshes a pane, so a wrong answer means a
+// pane silently stops updating.
+console.log('\nutils/paths:')
+{
+    assert(isInFolder('Work/Tasks/a.md', 'Work') === true, 'isInFolder: nested file is in scope')
+    assert(isInFolder('Work/a.md', 'Work') === true, 'isInFolder: direct child is in scope')
+    assert(isInFolder('Work', 'Work') === true, 'isInFolder: the folder itself is in scope')
+    assert(isInFolder('Personal/a.md', 'Work') === false, 'isInFolder: a sibling folder is out of scope')
+    // The prefix bug: "Work" must not swallow "Workshop".
+    assert(isInFolder('Workshop/a.md', 'Work') === false, 'isInFolder: a name-prefixed sibling is out of scope')
+    assert(isInFolder('a.md', '') === false, 'isInFolder: an unconfigured folder matches nothing')
+
+    assert(isDirectChildOf('Inbox/a.md', 'Inbox') === true, 'isDirectChildOf: direct child matches')
+    assert(isDirectChildOf('Inbox/sub/a.md', 'Inbox') === false, 'isDirectChildOf: grandchild does not match')
+    assert(isDirectChildOf('Inbox/sub/a.md', 'Inbox/sub') === true, 'isDirectChildOf: nested folder matches its own children')
+    assert(isDirectChildOf('Inbox Archive/a.md', 'Inbox') === false, 'isDirectChildOf: a name-prefixed sibling does not match')
+    assert(isDirectChildOf('a.md', 'Inbox') === false, 'isDirectChildOf: a vault-root file does not match')
+    assert(isDirectChildOf('a.md', '') === false, 'isDirectChildOf: an unconfigured folder matches nothing')
 }
 
 // ─── dates ───────────────────────────────────────────────────────────────────

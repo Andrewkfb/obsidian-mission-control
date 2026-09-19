@@ -1,4 +1,4 @@
-import { Notice, Plugin } from 'obsidian';
+import { debounce, Notice, Plugin } from 'obsidian';
 import { HomeTabView, VIEW_TYPE } from 'src/homeView';
 import { HomeTabSettingTab, DEFAULT_SETTINGS, type HomeTabSettings } from './settings'
 import { pluginSettingsStore, bookmarkedFiles } from './store'
@@ -73,6 +73,8 @@ export default class MissionControlPlugin extends Plugin {
 	}
 
 	onunload(): void {
+		// Flush a pending debounced save before the plugin goes away.
+		this.queuedSave.run()
 		this.recentFileManager?.unload()
 		this.bookmarkedFileManager?.unload()
 		this.taskIndex?.unload()
@@ -87,9 +89,39 @@ export default class MissionControlPlugin extends Plugin {
 		}
 	}
 
+	/**
+	 * Persist immediately. For user-initiated, infrequent changes — the settings
+	 * tab, where a change should survive quitting Obsidian a moment later.
+	 */
 	saveSettings(): void {
 		pluginSettingsStore.set(this.settings)
-		void this.saveData(this.settings)
+		this.queuedSave.cancel()
+		void this.writeSettings()
+	}
+
+	/**
+	 * Persist on a debounce. For bookkeeping that rides on ordinary navigation:
+	 * the recent-files list updates on every `file-open`, and each save
+	 * serializes the whole settings object — including the recent and bookmarked
+	 * file stores — back to data.json. Flipping through ten notes should not mean
+	 * ten full writes.
+	 */
+	queueSaveSettings(): void {
+		pluginSettingsStore.set(this.settings)
+		this.queuedSave()
+	}
+
+	// resetTimer: false — fire 1s after the *first* save in a burst, so continuous
+	// activity still gets written rather than being starved indefinitely.
+	private queuedSave = debounce(() => void this.writeSettings(), 1000, false)
+
+	/** Chain writes so two saves can never interleave mid-write. */
+	private writeChain: Promise<void> = Promise.resolve()
+	private writeSettings(): Promise<void> {
+		this.writeChain = this.writeChain
+			.then(() => this.saveData(this.settings))
+			.catch((err) => console.error('Mission Control: could not save settings', err))
+		return this.writeChain
 	}
 
 	private onLayoutChange(): void{

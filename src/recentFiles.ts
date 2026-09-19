@@ -72,7 +72,7 @@ export class RecentFileManager extends Component{
                 timestamp: item.timestamp
             }))
             this.plugin.settings.recentFilesStore = storeObj
-            this.plugin.saveSettings()
+            this.plugin.queueSaveSettings()
         }
     }
 

@@ -1,7 +1,8 @@
-import { Component, TFile, TFolder, TAbstractFile, normalizePath, getAllTags, type App } from 'obsidian'
+import { Component, TFile, TFolder, TAbstractFile, normalizePath, getAllTags, type App, type CachedMetadata } from 'obsidian'
 import type HomeTab from '../main'
 import type { Task } from './Task'
 import { parseTasks } from './TaskParser'
+import { isInFolder } from '../utils/paths'
 import { tasks as tasksStore, noteTagsByPath as noteTagsStore } from '../store'
 
 /**
@@ -26,13 +27,16 @@ export class TaskIndex extends Component {
     }
 
     onload(): void {
-        this.registerEvent(this.app.vault.on('modify', (file) => this.onFileChanged(file)))
-        this.registerEvent(this.app.vault.on('create', (file) => this.onFileChanged(file)))
+        // `metadataCache.changed` fires once a file has been indexed and hands us
+        // both its content and its parsed cache. That makes it a strict
+        // improvement over listening to `vault.on('modify')` as well: the two
+        // fired for the same edit, costing a second read and parse each time, and
+        // the metadata event is the one that guarantees the tag cache is current.
+        // It also covers newly created files, so 'create' is redundant.
+        this.registerEvent(this.app.metadataCache.on('changed', (file, data, cache) => this.onFileIndexed(file, data, cache)))
         this.registerEvent(this.app.vault.on('delete', (file) => this.onFileDeleted(file)))
+        // Documented not to fire on 'changed', so it has to come from the vault.
         this.registerEvent(this.app.vault.on('rename', (file, oldPath) => this.onFileRenamed(file, oldPath)))
-        // Tag/frontmatter edits don't always trigger 'modify' before the cache updates;
-        // listen to metadata changes so the tag filter stays accurate.
-        this.registerEvent(this.app.metadataCache.on('changed', (file) => this.onFileChanged(file)))
 
         this.app.workspace.onLayoutReady(() => this.rebuild())
     }
@@ -73,41 +77,47 @@ export class TaskIndex extends Component {
     }
 
     private inScope(path: string): boolean {
-        const root = this.root
-        if (root === null) return false
-        return path === root || path.startsWith(root + '/')
+        return isInFolder(path, this.root ?? '')
     }
 
+    /**
+     * Index a file from content and metadata we already hold. The
+     * `metadataCache.changed` event supplies both, so the hot path costs no
+     * vault read and no cache lookup.
+     */
+    private indexContent(file: TFile, content: string, cache: CachedMetadata | null): void {
+        const parsed = parseTasks(content, file.path, file.basename)
+        if (parsed.length > 0) this.byPath.set(file.path, parsed)
+        else this.byPath.delete(file.path)
+
+        const tags = this.readNoteTags(cache)
+        if (tags.size > 0) this.tagsByPath.set(file.path, tags)
+        else this.tagsByPath.delete(file.path)
+    }
+
+    /** Read a file, then index it. Used by the full rescan and by renames. */
     private async indexFile(file: TFile): Promise<void> {
         try {
             const content = await this.app.vault.cachedRead(file)
-            const parsed = parseTasks(content, file.path, file.basename)
-            if (parsed.length > 0) this.byPath.set(file.path, parsed)
-            else this.byPath.delete(file.path)
-
-            const tags = this.readNoteTags(file)
-            if (tags.size > 0) this.tagsByPath.set(file.path, tags)
-            else this.tagsByPath.delete(file.path)
+            this.indexContent(file, content, this.app.metadataCache.getFileCache(file))
         } catch {
             this.byPath.delete(file.path)
             this.tagsByPath.delete(file.path)
         }
     }
 
-    /** Pull note-level tags from the metadata cache (frontmatter + body), stripped of '#'. */
-    private readNoteTags(file: TFile): Set<string> {
-        const cache = this.app.metadataCache.getFileCache(file)
-        if (!cache) return new Set()
-        const raw = getAllTags(cache) ?? []
+    /** Pull note-level tags from a metadata cache (frontmatter + body), stripped of '#'. */
+    private readNoteTags(cache: CachedMetadata | null): Set<string> {
         const out = new Set<string>()
-        for (const t of raw) out.add(t.replace(/^#/, ''))
+        if (!cache) return out
+        for (const t of getAllTags(cache) ?? []) out.add(t.replace(/^#/, ''))
         return out
     }
 
-    private onFileChanged(file: TAbstractFile): void {
-        if (file instanceof TFile && file.extension === 'md' && this.inScope(file.path)) {
-            void this.indexFile(file).then(() => this.scheduleFlush())
-        }
+    private onFileIndexed(file: TFile, data: string, cache: CachedMetadata): void {
+        if (file.extension !== 'md' || !this.inScope(file.path)) return
+        this.indexContent(file, data, cache)
+        this.scheduleFlush()
     }
 
     private onFileDeleted(file: TAbstractFile): void {
