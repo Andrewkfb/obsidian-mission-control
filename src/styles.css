@@ -101,6 +101,10 @@
 
 .popper-wrapper {
     z-index: var(--layer-menu);
+    /* Anchored by src/utils/anchor.ts, which publishes the two offsets below. */
+    position: fixed;
+    top: var(--mc-anchor-top, 0);
+    left: var(--mc-anchor-left, 0);
 }
 
 .popper-wrapper.is-phone {

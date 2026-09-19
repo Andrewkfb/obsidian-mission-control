@@ -6,6 +6,7 @@ import { buildDashboard } from '../src/tasks/grouping'
 import { getToday, addDaysISO, msUntilNextDayStart } from '../src/tasks/dates'
 import { applyToggleToLine, buildNextRecurrence, resolveTaskLine, toggleComplete, buildTaskLine, appendTaskLine, createTask } from '../src/tasks/TaskWriter'
 import { isInFolder, isDirectChildOf } from '../src/utils/paths'
+import { anchorPosition } from '../src/utils/anchor'
 import { tagMatches, taskMatchesTags } from '../src/tasks/tags'
 import { mergeTabAdditions } from '../src/utils/tabs'
 import type { Vault } from 'obsidian'
@@ -89,6 +90,40 @@ console.log('\nutils/paths:')
     assert(isDirectChildOf('Inbox Archive/a.md', 'Inbox') === false, 'isDirectChildOf: a name-prefixed sibling does not match')
     assert(isDirectChildOf('a.md', 'Inbox') === false, 'isDirectChildOf: a vault-root file does not match')
     assert(isDirectChildOf('a.md', '') === false, 'isDirectChildOf: an unconfigured folder matches nothing')
+}
+
+// ─── utils/anchor ───────────────────────────────────────────────────────────
+// Replaces what @popperjs/core was doing for the suggestion popover: place it
+// below, flip above when there is no room, and keep it on screen.
+console.log('\nutils/anchor:')
+{
+    const viewport = { width: 1000, height: 800 }
+    const size = { width: 300, height: 200 }
+
+    // Plenty of room below: sit under the field, offset by the gap.
+    const below = anchorPosition({ top: 100, bottom: 130, left: 40 }, size, viewport, 5)
+    assert(below.top === 135, 'places the popover below the field')
+    assert(below.left === 40, 'aligns the popover to the left edge of the field')
+
+    // Near the bottom there is no room below but plenty above, so flip.
+    const flipped = anchorPosition({ top: 700, bottom: 730, left: 40 }, size, viewport, 5)
+    assert(flipped.top === 495, 'flips above when there is no room below')
+
+    // Squeezed both ways: stay on screen rather than hanging off it.
+    const tight = anchorPosition({ top: 10, bottom: 780, left: 40 }, size, { width: 1000, height: 800 }, 5)
+    assert(tight.top >= 5 && tight.top + size.height <= 800, 'clamps vertically into the viewport')
+
+    // A field near the right edge must not push the popover off it.
+    const rightEdge = anchorPosition({ top: 100, bottom: 130, left: 900 }, size, viewport, 5)
+    assert(rightEdge.left === 700, 'clamps horizontally so the popover stays on screen')
+
+    // The phone layout is full width; it should sit flush, not inset by the gap.
+    const fullWidth = anchorPosition({ top: 100, bottom: 130, left: 0 }, { width: 1000, height: 200 }, viewport, 5)
+    assert(fullWidth.left === 0, 'a full-width popover sits flush against the edge')
+
+    // A popover taller than the viewport still starts on screen.
+    const huge = anchorPosition({ top: 100, bottom: 130, left: 40 }, { width: 300, height: 5000 }, viewport, 5)
+    assert(huge.top === 5, 'an oversized popover is pinned to the top rather than pushed off')
 }
 
 // ─── dates ───────────────────────────────────────────────────────────────────

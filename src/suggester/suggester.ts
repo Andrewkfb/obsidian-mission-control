@@ -2,8 +2,8 @@
 
 import { debounce, Platform, Scope, type App } from 'obsidian'
 import suggesterView from '../ui/suggesterView.svelte'
-import { createPopper, type Instance as PopperInstance } from '@popperjs/core';
 import { mount, unmount, type Component } from 'svelte'
+import { anchorTo } from '../utils/anchor'
 import { get, writable, type Writable } from 'svelte/store';
 
 export interface Shortcut {
@@ -232,39 +232,30 @@ export abstract class TextInputSuggester<T> implements ISuggester<T>{
 }
 
 export abstract class PopoverTextInputSuggester<T> extends TextInputSuggester<T>{
-    private popperInstance: PopperInstance | undefined
-    private popperWrapper: HTMLElement | undefined
+    private popoverWrapper: HTMLElement | undefined
+    private releaseAnchor: (() => void) | undefined
     
     constructor(app: App, inputEl: HTMLInputElement, viewOptions?: suggesterViewOptions){
         super(app, inputEl, app.dom.appContainerEl, viewOptions)
     }
 
     getContainerEl(): HTMLElement {
-        if(this.popperWrapper && document.contains(this.popperWrapper)) return this.popperWrapper
-        this.popperWrapper = this.suggestionParentContainer.createDiv('popper-wrapper')
-        const isPhone = Platform.isPhone
-        this.popperWrapper.toggleClass('is-phone', isPhone)
-        const popperReference = isPhone ? document.body : this.inputEl
-        
-        this.popperInstance = createPopper(popperReference, this.popperWrapper, {
-            placement: 'bottom-start',
-            modifiers: [{
-                name: 'offset',
-                options: {
-                    offset: [0, 5]
-                }
-            }]
-        })
+        if(this.popoverWrapper && document.contains(this.popoverWrapper)) return this.popoverWrapper
+        this.popoverWrapper = this.suggestionParentContainer.createDiv('popper-wrapper')
+        // On a phone the wrapper is full width (see .popper-wrapper.is-phone),
+        // but it still hangs off the field rather than off the document, so the
+        // suggestions appear where the typing is.
+        this.popoverWrapper.toggleClass('is-phone', Platform.isPhone)
+        this.releaseAnchor = anchorTo(this.inputEl, this.popoverWrapper)
 
-        return this.popperWrapper
+        return this.popoverWrapper
     }
 
     additionalCleaning(): void {
-        if(this.popperInstance){
-            this.popperInstance.destroy()
-        }
-        if(this.popperWrapper && document.body.contains(this.popperWrapper)){
-            this.popperWrapper.detach()
+        this.releaseAnchor?.()
+        this.releaseAnchor = undefined
+        if(this.popoverWrapper && document.body.contains(this.popoverWrapper)){
+            this.popoverWrapper.detach()
         }
     }
 
