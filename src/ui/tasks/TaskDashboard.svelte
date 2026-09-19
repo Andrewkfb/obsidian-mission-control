@@ -4,11 +4,13 @@
     import { tasks as tasksStore, pluginSettingsStore, noteTagsByPath } from "src/store"
     import { buildDashboard, type Dashboard, type ProjectSummary } from "src/tasks/grouping"
     import { getToday, msUntilNextDayStart } from "src/tasks/dates"
+    import { taskMatchesTags } from "src/tasks/tags"
     import { toggleComplete } from "src/tasks/TaskWriter"
     import type { Task } from "src/tasks/Task"
     import type HomeTab from "src/main"
     import TodayTab from "./tabs/TodayTab.svelte"
     import UpcomingTab from "./tabs/UpcomingTab.svelte"
+    import BacklogTab from "./tabs/BacklogTab.svelte"
     import ProjectsTab from "./tabs/ProjectsTab.svelte"
     import RecurringTab from "./tabs/RecurringTab.svelte"
     import BookmarksTab from "./tabs/BookmarksTab.svelte"
@@ -58,6 +60,14 @@
             events: () => ({ toggle: (e) => handleToggle(e.detail.task) }),
         },
         {
+            id: "backlog",
+            label: "Backlog",
+            badge: (d) => d.backlog.reduce((n, g) => n + g.tasks.length, 0),
+            component: BacklogTab,
+            props: (ctx) => ({ app: ctx.app, dashboard: ctx.dashboard, todayISO: ctx.todayISO }),
+            events: () => ({ toggle: (e) => handleToggle(e.detail.task) }),
+        },
+        {
             id: "projects",
             label: "Projects",
             component: ProjectsTab,
@@ -97,7 +107,7 @@
     let barEl: HTMLElement | null = null
 
     $: isbookmarksPluginEnabled = !!plugin.app.internalPlugins.getPluginById('bookmarks')
-    $: enabledTabIds = $pluginSettingsStore?.activeTabs ?? ['today', 'upcoming', 'projects', 'bookmarks', 'recent']
+    $: enabledTabIds = $pluginSettingsStore?.activeTabs ?? tabs.map(t => t.id)
     $: visibleTabs = tabs.filter(t => {
         if (!enabledTabIds.includes(t.id)) return false
         if (t.id === 'bookmarks' && (!isbookmarksPluginEnabled || !plugin.bookmarkedFileManager)) return false
@@ -189,11 +199,16 @@
     $: allowedTagWhitelist = $pluginSettingsStore?.allowedFilterTags ?? []
     $: activeFilterTags = $pluginSettingsStore?.activeFilterTags ?? []
 
-    // Tags shown in the filter menu = whitelist if set, otherwise every tag we've indexed.
+    // Tags shown in the filter menu = whitelist if set, otherwise every tag we've
+    // indexed — from note frontmatter/body *and* from the task lines themselves,
+    // so a tag that only ever appears on a task is still selectable.
     $: indexedTags = (() => {
         const all = new Set<string>()
         for (const tags of ($noteTagsByPath ?? new Map<string, Set<string>>()).values()) {
             for (const t of tags) all.add(t)
+        }
+        for (const task of $tasksStore ?? []) {
+            for (const t of task.tags) all.add(t)
         }
         return [...all].sort((a, b) => a.localeCompare(b))
     })()
@@ -202,17 +217,9 @@
         : indexedTags
 
     // Filter pipeline: project filter, then tag filter, then bucket.
-    $: tagFilterActive = activeFilterTags.length > 0
     $: allTasks = ($tasksStore ?? []).filter((t) => {
         if (activeProject && t.sourcePath !== activeProject) return false
-        if (tagFilterActive) {
-            const noteTags = $noteTagsByPath?.get(t.sourcePath)
-            if (!noteTags) return false
-            // OR semantics: pass if the note has any of the selected tags.
-            for (const tag of activeFilterTags) if (noteTags.has(tag)) return true
-            return false
-        }
-        return true
+        return taskMatchesTags(t, activeFilterTags, $noteTagsByPath?.get(t.sourcePath))
     })
     $: dashboard = buildDashboard(allTasks, todayISO, {
         upcomingDays: $pluginSettingsStore?.upcomingDays ?? 7,

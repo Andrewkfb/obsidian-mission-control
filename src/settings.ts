@@ -8,7 +8,7 @@ import isLink from './utils/isLink'
 import type { RecentFileStore } from './recentFiles'
 import type { BookmarkedFileStore } from './bookmarkedFiles'
 import { checkFont } from './utils/fontValidator'
-import { noteTagsByPath } from './store'
+import { noteTagsByPath, tasks } from './store'
 import { get } from 'svelte/store'
 
 type ColorChoices = 'default' | 'accentColor' | 'custom'
@@ -66,6 +66,9 @@ export interface HomeTabSettings {
     showHeadings: boolean
     // IDs of tabs that are visible in the task dashboard.
     activeTabs: string[]
+    // Which entries of TAB_ADDITIONS have already been merged into activeTabs.
+    // See mergeTabAdditions in ./utils/tabs.
+    mergedTabAdditions: string[]
     // Vault-relative path to the inbox folder shown in the Inbox tab.
     inboxFolder: string
 }
@@ -107,13 +110,14 @@ export const DEFAULT_SETTINGS: HomeTabSettings = {
     allowedFilterTags: [],
     activeFilterTags: [],
     showHeadings: true,
-    activeTabs: ['today', 'upcoming', 'projects', 'recurring', 'inbox', 'bookmarks', 'recent'],
+    activeTabs: ['today', 'upcoming', 'backlog', 'projects', 'recurring', 'inbox', 'bookmarks', 'recent'],
+    mergedTabAdditions: [],
     inboxFolder: '01 Inbox',
 }
 
 const SETTING_SEARCH_ALIASES = [
     'Task source folder', 'Day starts at', 'Upcoming window', 'Show completed tasks',
-    'Show headings', 'Tag filter menu', 'Dashboard tabs', 'Today', 'Upcoming',
+    'Show headings', 'Tag filter menu', 'Dashboard tabs', 'Today', 'Upcoming', 'Backlog',
     'Projects', 'Recurring', 'Inbox', 'Bookmarks', 'Recent files', 'Replace new tabs',
     'Open on startup', 'Close previous session tabs', 'Omnisearch', 'Markdown files',
     'Uncreated files', 'File path', 'Shortcuts', 'Search results', 'Search delay',
@@ -239,6 +243,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
         const ALL_TABS: { id: string; label: string; requiresBookmarks?: true }[] = [
             { id: 'today',     label: 'Today' },
             { id: 'upcoming',  label: 'Upcoming' },
+            { id: 'backlog',   label: 'Backlog' },
             { id: 'projects',  label: 'Projects' },
             { id: 'recurring', label: 'Recurring' },
             { id: 'inbox',     label: 'Inbox' },
@@ -641,12 +646,16 @@ export class HomeTabSettingTab extends PluginSettingTab{
 
     /**
      * Renders the tag-filter whitelist control. Pulls available tags from the
-     * indexed source folder (via `noteTagsByPath`) and lets the user toggle which
-     * ones appear in the dashboard's filter menu. Empty list = show every tag.
+     * indexed source folder and lets the user toggle which ones appear in the
+     * dashboard's filter menu. Empty list = show every tag.
+     *
+     * Pulls from note-level tags *and* task-line tags, matching what the
+     * dashboard's filter actually matches against.
      */
     private renderTagFilterWhitelist(containerEl: HTMLElement): void {
         const availableTags = new Set<string>()
         for (const tags of get(noteTagsByPath).values()) for (const t of tags) availableTags.add(t)
+        for (const task of get(tasks) ?? []) for (const t of task.tags) availableTags.add(t)
         const allTags = [...availableTags].sort((a, b) => a.localeCompare(b))
 
         const setting = new Setting(containerEl)

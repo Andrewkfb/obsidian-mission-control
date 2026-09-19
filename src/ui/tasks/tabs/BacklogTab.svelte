@@ -1,0 +1,29 @@
+<script lang="ts">
+    import type { Dashboard } from "src/tasks/grouping"
+    import type { Task } from "src/tasks/Task"
+    import TaskItem from "../TaskItem.svelte"
+    import { createEventDispatcher } from "svelte"
+    import type { App } from "obsidian"
+
+    export let app: App
+    export let dashboard: Dashboard
+    export let todayISO: string
+
+    const dispatch = createEventDispatcher<{ toggle: { task: Task } }>()
+</script>
+
+<section class="mc-pane">
+    <h2 class="mc-pane-title">Backlog</h2>
+    {#if dashboard.backlog.length === 0}
+        <p class="mc-empty">Nothing waiting.</p>
+    {:else}
+        {#each dashboard.backlog as group (group.key)}
+            <div class="mc-group">
+                <h3 class="mc-group-title">{group.title} <span class="mc-count">{group.tasks.length}</span></h3>
+                {#each group.tasks as task (task.sourcePath + ":" + task.sourceLine)}
+                    <TaskItem {app} {task} {todayISO} on:toggle={(e) => dispatch("toggle", { task: e.detail.task })} />
+                {/each}
+            </div>
+        {/each}
+    {/if}
+</section>

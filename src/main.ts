@@ -1,6 +1,7 @@
 import { debounce, Notice, Plugin } from 'obsidian';
 import { HomeTabView, VIEW_TYPE } from 'src/homeView';
 import { HomeTabSettingTab, DEFAULT_SETTINGS, type HomeTabSettings } from './settings'
+import { mergeTabAdditions } from './utils/tabs'
 import { pluginSettingsStore, bookmarkedFiles } from './store'
 import { RecentFileManager } from './recentFiles';
 import { BookmarkedFileManager } from './bookmarkedFiles';
@@ -82,10 +83,15 @@ export default class MissionControlPlugin extends Plugin {
 
 	async loadSettings(): Promise<void> {
 		const saved = await this.loadData() as Partial<HomeTabSettings> | null
+		// A saved `activeTabs` predates any tab added since, so merge those in
+		// rather than letting an upgrade hide them. See mergeTabAdditions.
+		const tabs = mergeTabAdditions(saved?.activeTabs, saved?.mergedTabAdditions, DEFAULT_SETTINGS.activeTabs)
 		this.settings = {
 			...DEFAULT_SETTINGS,
 			...saved,
 			logo: { ...DEFAULT_SETTINGS.logo, ...saved?.logo },
+			activeTabs: tabs.activeTabs,
+			mergedTabAdditions: tabs.mergedTabAdditions,
 		}
 	}
 

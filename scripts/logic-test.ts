@@ -6,6 +6,8 @@ import { buildDashboard } from '../src/tasks/grouping'
 import { getToday, addDaysISO, msUntilNextDayStart } from '../src/tasks/dates'
 import { applyToggleToLine, buildNextRecurrence, resolveTaskLine, toggleComplete } from '../src/tasks/TaskWriter'
 import { isInFolder, isDirectChildOf } from '../src/utils/paths'
+import { tagMatches, taskMatchesTags } from '../src/tasks/tags'
+import { mergeTabAdditions } from '../src/utils/tabs'
 import type { Vault } from 'obsidian'
 import { computeNextDate } from '../src/tasks/recurrence'
 import type { Task } from '../src/tasks/Task'
@@ -140,7 +142,7 @@ console.log('\ngrouping:')
     const todayKeys = d.today.map(g => g.key)
     assert(todayKeys.includes('overdue'), 'today has overdue group')
     assert(todayKeys.includes('dueToday'), 'today has dueToday group')
-    assert(todayKeys.includes('scheduledToday'), 'today has scheduledToday group')
+    assert(todayKeys.includes('scheduled'), 'today has scheduled group')
     assert(todayKeys.includes('inProgress'), 'today has inProgress group')
     const upKeys = d.upcoming.map(g => g.key)
     assert(upKeys.includes('tomorrow'), 'upcoming has tomorrow group')
@@ -157,6 +159,99 @@ console.log('\ngrouping:')
     const recurringDashboard = buildDashboard([recurring], today, { upcomingDays: 7, showCompleted: false })
     assert(recurringDashboard.recurring[0]?.nextDate === addDaysISO(today, 7), 'recurring dashboard computes next occurrence')
 
+    // --- backlog ---
+    const backlogKeys = d.backlog.map(g => g.key)
+    assert(backlogKeys.includes('noDate'), 'backlog has noDate group')
+    assert(backlogKeys.includes('later'), 'backlog has later group')
+    // Guarded lookups, not `!`: a missing group should fail its own assertion
+    // rather than throw and take every later test down with it.
+    const noDateGroup = d.backlog.find(g => g.key === 'noDate')
+    assert(noDateGroup?.tasks.length === 1, 'backlog noDate holds the undated task')
+    const laterGroup = d.backlog.find(g => g.key === 'later')
+    assert(laterGroup?.tasks.length === 1, 'backlog later holds the task beyond the window')
+    // An undated in-progress task belongs on Today, not in the backlog.
+    assert(!(noDateGroup?.tasks ?? []).some(t => t.status === 'inProgress'), 'in-progress tasks stay on Today rather than the backlog')
+
+    // A task scheduled in the past with no due date used to match no bucket at
+    // all and disappear from every pane.
+    {
+        const pastScheduled = mk({ scheduled: addDaysISO(today, -5) })
+        const dd = buildDashboard([pastScheduled], today, { upcomingDays: 7, showCompleted: false })
+        const scheduled = dd.today.find(g => g.key === 'scheduled')
+        assert(scheduled?.tasks.includes(pastScheduled) ?? false, 'a past scheduled date surfaces on Today')
+    }
+
+    // The invariant the backlog exists to guarantee: every open task shows up in
+    // exactly one place. Regression guard for any future bucketing change.
+    {
+        const everyShape = [
+            mk({ due: addDaysISO(today, -2) }),
+            mk({ due: today }),
+            mk({ scheduled: today }),
+            mk({ scheduled: addDaysISO(today, -9) }),
+            mk({ status: 'inProgress' as const }),
+            mk({ due: addDaysISO(today, 1) }),
+            mk({ due: addDaysISO(today, 3) }),
+            mk({ scheduled: addDaysISO(today, 4) }),
+            mk({}),
+            mk({ due: addDaysISO(today, 60) }),
+            mk({ scheduled: addDaysISO(today, 400) }),
+            mk({ due: addDaysISO(today, 2), scheduled: addDaysISO(today, -3) }),
+        ]
+        const full = buildDashboard(everyShape, today, { upcomingDays: 7, showCompleted: false })
+        const placements = new Map<Task, number>()
+        for (const pane of [full.today, full.upcoming, full.backlog]) {
+            for (const g of pane) for (const t of g.tasks) placements.set(t, (placements.get(t) ?? 0) + 1)
+        }
+        const missing = everyShape.filter(t => !placements.has(t))
+        const duplicated = everyShape.filter(t => (placements.get(t) ?? 0) > 1)
+        assert(missing.length === 0, `every open task lands in a pane (${missing.length} missing)`)
+        assert(duplicated.length === 0, `no open task is double-counted (${duplicated.length} duplicated)`)
+    }
+}
+
+// ─── tasks/tags ──────────────────────────────────────────────────────────────
+console.log('\ntasks/tags:')
+{
+    const mkTagged = (tags: string[]): Task => ({ ...parseTaskLine('- [ ] x', 'A.md', 0, 'A')!, tags })
+
+    assert(tagMatches('work', 'work') === true, 'tagMatches: exact')
+    assert(tagMatches('work/q2', 'work') === true, 'tagMatches: nested child matches its parent')
+    assert(tagMatches('work', 'work/q2') === false, 'tagMatches: parent does not match a child selection')
+    assert(tagMatches('workshop', 'work') === false, 'tagMatches: a name-prefixed sibling does not match')
+
+    assert(taskMatchesTags(mkTagged([]), [], undefined) === true, 'no selection matches everything')
+    assert(taskMatchesTags(mkTagged(['errand']), ['errand'], undefined) === true, 'matches a tag on the task line')
+    // The gap this closes: previously only note-level tags were consulted, so a
+    // tag written on the task itself could never be filtered on.
+    assert(taskMatchesTags(mkTagged(['errand']), ['errand'], new Set()) === true, 'task-line tag matches even when the note has no tags')
+    assert(taskMatchesTags(mkTagged([]), ['proj'], new Set(['proj'])) === true, 'matches a note-level tag')
+    assert(taskMatchesTags(mkTagged(['a']), ['b'], new Set(['c'])) === false, 'no overlap does not match')
+    assert(taskMatchesTags(mkTagged(['work/q2']), ['work'], undefined) === true, 'selecting a parent tag matches a nested task tag')
+    assert(taskMatchesTags(mkTagged(['a']), ['b', 'a'], undefined) === true, 'OR semantics across the selection')
+}
+
+// ─── settings: mergeTabAdditions ─────────────────────────────────────────────
+console.log('\nsettings (mergeTabAdditions):')
+{
+    // Fresh install: take the defaults, and record the additions as handled.
+    const DEFAULT_TABS = ['today', 'upcoming', 'backlog', 'projects']
+    const fresh = mergeTabAdditions(undefined, undefined, DEFAULT_TABS, ['backlog'])
+    assert(fresh.activeTabs.includes('backlog'), 'fresh install gets the new tab')
+    assert(fresh.mergedTabAdditions.includes('backlog'), 'fresh install records the addition as merged')
+
+    // Upgrade: a saved list predating the tab gets it appended.
+    const upgraded = mergeTabAdditions(['today', 'upcoming'], undefined, DEFAULT_TABS, ['backlog'])
+    assert(upgraded.activeTabs.join() === 'today,upcoming,backlog', 'upgrade appends the new tab to a saved list')
+    assert(upgraded.mergedTabAdditions.includes('backlog'), 'upgrade records the merge')
+
+    // Having merged once, a user turning the tab off must not have it re-added.
+    const optedOut = mergeTabAdditions(['today', 'upcoming'], ['backlog'], DEFAULT_TABS, ['backlog'])
+    assert(!optedOut.activeTabs.includes('backlog'), 'a deliberately disabled tab is not re-added')
+
+    // Re-running the merge without an intervening save is idempotent.
+    const again = mergeTabAdditions(upgraded.activeTabs, upgraded.mergedTabAdditions, DEFAULT_TABS, ['backlog'])
+    assert(again.activeTabs.filter(t => t === 'backlog').length === 1, 'merging twice does not duplicate the tab')
 }
 
 // ─── TaskWriter: applyToggleToLine ───────────────────────────────────────────

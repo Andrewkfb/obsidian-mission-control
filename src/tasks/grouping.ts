@@ -28,6 +28,11 @@ export interface RecurringEntry {
 export interface Dashboard {
     today: TaskGroup[]
     upcoming: TaskGroup[]
+    // Everything that is neither actionable today nor inside the upcoming
+    // window: undated work, and work dated beyond the horizon. Together with
+    // `today` and `upcoming` this accounts for every task, so nothing is
+    // silently invisible.
+    backlog: TaskGroup[]
     projects: ProjectSummary[]
     recurring: RecurringEntry[]
 }
@@ -58,13 +63,19 @@ export function buildDashboard(allTasks: Task[], todayISO: string, opts: { upcom
     const tomorrow: Task[] = []
     const nextDays: Task[] = []
 
+    const noDate: Task[] = []
+    const later: Task[] = []
+
     const tomorrowISO = addDaysISO(todayISO, 1)
     const windowEndISO = addDaysISO(todayISO, opts.upcomingDays)
 
+    // Every task lands in exactly one bucket. The chain below is exhaustive by
+    // construction — the final `else` is the catch-all — so a task can never
+    // fall through and vanish from the dashboard.
     for (const task of tasks) {
         if (!opts.showCompleted && !isOpen(task)) continue
 
-        // --- Today buckets (each task lands in at most one, by priority) ---
+        // --- Today buckets (first match wins) ---
         if (task.due && task.due < todayISO) {
             overdue.push(task)
             continue
@@ -73,22 +84,28 @@ export function buildDashboard(allTasks: Task[], todayISO: string, opts: { upcom
             dueToday.push(task)
             continue
         }
-        if (task.scheduled === todayISO) {
+        // `<=`, not `===`: a task scheduled in the past is available now. With
+        // `===` it matched no bucket at all and disappeared.
+        if (task.scheduled && task.scheduled <= todayISO) {
             scheduledToday.push(task)
             continue
         }
 
-        // --- Upcoming buckets ---
+        // --- Upcoming, then backlog ---
         const eff = effectiveDate(task)
         if (eff === tomorrowISO) {
             tomorrow.push(task)
         } else if (eff && eff > tomorrowISO && eff <= windowEndISO) {
             nextDays.push(task)
-        } else if (!eff && task.status === 'inProgress') {
-            // Dateless in-progress tasks still surface on Today; other dateless tasks are dropped.
+        } else if (eff) {
+            // Dated, but past the at-a-glance horizon.
+            later.push(task)
+        } else if (task.status === 'inProgress') {
+            // Undated but started: belongs on Today, not in the backlog.
             inProgress.push(task)
+        } else {
+            noDate.push(task)
         }
-        // eff beyond the window is intentionally dropped from the at-a-glance view.
     }
 
     const group = (key: string, title: string, list: Task[]): TaskGroup => ({
@@ -100,13 +117,18 @@ export function buildDashboard(allTasks: Task[], todayISO: string, opts: { upcom
     const today = [
         group('overdue', 'Overdue', overdue),
         group('dueToday', 'Due today', dueToday),
-        group('scheduledToday', 'Scheduled today', scheduledToday),
+        group('scheduled', 'Scheduled', scheduledToday),
         group('inProgress', 'In progress', inProgress),
     ].filter(g => g.tasks.length > 0)
 
     const upcoming = [
         group('tomorrow', 'Tomorrow', tomorrow),
         group('nextDays', `Next ${opts.upcomingDays} days`, nextDays),
+    ].filter(g => g.tasks.length > 0)
+
+    const backlog = [
+        group('noDate', 'No date', noDate),
+        group('later', `Beyond ${opts.upcomingDays} days`, later),
     ].filter(g => g.tasks.length > 0)
 
     // --- Projects: open-task count + distinct headings per source file ---
@@ -143,7 +165,7 @@ export function buildDashboard(allTasks: Task[], todayISO: string, opts: { upcom
             return a.task.text.localeCompare(b.task.text)
         })
 
-    return { today, upcoming, projects, recurring }
+    return { today, upcoming, backlog, projects, recurring }
 }
 
 /** Whole-day overdue amount for a task, for the "3d overdue" badge. */

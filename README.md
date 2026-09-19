@@ -7,9 +7,10 @@ Mission Control turns a configurable vault folder into a home-tab dashboard for 
 ## Features
 
 - Today and upcoming task views with due, scheduled, overdue, priority, and in-progress states
+- A Backlog view for undated work and anything dated beyond the upcoming window, so no open task is hidden
 - Project summaries grouped by source note and heading
 - Recurring-task overview and automatic creation of the next occurrence when a task is completed
-- Tag filtering across indexed notes
+- Tag filtering on both note-level tags and tags written on the task line, including nested tags (selecting `#work` matches `#work/q2`)
 - Inbox, Bookmarks, and recent-file tabs
 - Full-text search through the optional [Omnisearch](https://github.com/scambier/obsidian-omnisearch) plugin, with a built-in filename fallback
 - Configurable startup behavior, dashboard tabs, title, logo, fonts, and colors
