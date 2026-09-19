@@ -8,6 +8,8 @@ Mission Control turns a configurable vault folder into a home-tab dashboard for 
 
 - Today and upcoming task views with due, scheduled, overdue, priority, and in-progress states
 - A Backlog view for undated work and anything dated beyond the upcoming window, so no open task is hidden
+- A Done view of recently completed work, grouped by completion date
+- Quick-add: type a task at the top of the dashboard to append it to your capture note, or to the selected project
 - Project summaries grouped by source note and heading
 - Recurring-task overview and automatic creation of the next occurrence when a task is completed
 - Tag filtering on both note-level tags and tags written on the task line, including nested tags (selecting `#work` matches `#work/q2`)
@@ -23,7 +25,10 @@ Mission Control reads task syntax used by [Tasks](https://publish.obsidian.md/ta
 1. Open **Settings → Mission Control**.
 2. Choose a **Task source folder**. Mission Control scans Markdown files in this folder recursively.
 3. Optionally choose an **Inbox folder**, enable or hide dashboard tabs, and configure the day boundary.
-4. Run **Mission Control: Open new tab** or use the ribbon icon.
+4. Optionally set a **Quick-add note** to capture tasks from the dashboard.
+5. Run **Mission Control: Open new tab** or use the ribbon icon.
+
+Quick-add takes the same syntax it reads, so `Ship it 📅 2026-06-01 ⏫ #release` creates exactly that task. With a project selected, it captures into that project note instead of the quick-add note.
 
 Mission Control recognizes Markdown task lines such as:
 
@@ -32,6 +37,8 @@ Mission Control recognizes Markdown task lines such as:
 - [ ] Weekly review 🔁 every week ⏳ 2026-08-14
 - [/] Investigate mobile layout [priority:: high]
 ```
+
+The Done view lists tasks by their `✅` completion date and reaches back as far as the **Completed window** setting. Tasks completed without a `✅` date aren't listed — there's no way to tell whether they're recent. Mission Control stamps the date on anything it completes itself.
 
 Supported task states are open (`[ ]`), complete (`[x]`), in progress (`[/]`), and cancelled (`[-]`). Supported date fields include due (`📅`), scheduled (`⏳`), start (`🛫`), completion (`✅`), and created (`➕`).
 

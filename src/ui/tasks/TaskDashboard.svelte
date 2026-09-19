@@ -5,18 +5,20 @@
     import { buildDashboard, type Dashboard, type ProjectSummary } from "src/tasks/grouping"
     import { getToday, msUntilNextDayStart } from "src/tasks/dates"
     import { taskMatchesTags } from "src/tasks/tags"
-    import { toggleComplete } from "src/tasks/TaskWriter"
+    import { toggleComplete, createTask } from "src/tasks/TaskWriter"
     import type { Task } from "src/tasks/Task"
     import type HomeTab from "src/main"
     import TodayTab from "./tabs/TodayTab.svelte"
     import UpcomingTab from "./tabs/UpcomingTab.svelte"
     import BacklogTab from "./tabs/BacklogTab.svelte"
+    import DoneTab from "./tabs/DoneTab.svelte"
     import ProjectsTab from "./tabs/ProjectsTab.svelte"
     import RecurringTab from "./tabs/RecurringTab.svelte"
     import BookmarksTab from "./tabs/BookmarksTab.svelte"
     import RecentFilesTab from "./tabs/RecentFilesTab.svelte"
     import InboxTab from "./tabs/InboxTab.svelte"
     import TagFilterButton from "./TagFilterButton.svelte"
+    import QuickAdd from "./QuickAdd.svelte"
 
     interface Props {
         plugin: HomeTab
@@ -67,6 +69,13 @@
             label: "Backlog",
             badge: (d) => d.backlog.reduce((n, g) => n + g.tasks.length, 0),
             component: BacklogTab,
+            props: (ctx) => ({ app: ctx.app, dashboard: ctx.dashboard, todayISO: ctx.todayISO, ontoggle: handleToggle }),
+        },
+        {
+            id: "done",
+            label: "Done",
+            badge: (d) => d.completed.reduce((n, g) => n + g.tasks.length, 0),
+            component: DoneTab,
             props: (ctx) => ({ app: ctx.app, dashboard: ctx.dashboard, todayISO: ctx.todayISO, ontoggle: handleToggle }),
         },
         {
@@ -230,9 +239,30 @@
     const dashboard = $derived(buildDashboard(allTasks, todayISO, {
         upcomingDays: $pluginSettingsStore?.upcomingDays ?? 7,
         showCompleted: $pluginSettingsStore?.showCompletedTasks ?? false,
+        completedDays: $pluginSettingsStore?.completedDays ?? 7,
     }))
     const ctx = $derived({ app: plugin.app, dashboard, todayISO, activeProject } as TabContext)
     const activeTab = $derived(visibleTabs.find((t) => t.id === activeTabId) ?? visibleTabs[0])
+
+    // Quick-add captures into the selected project when one is active — filtering
+    // to a project and adding to it is the natural gesture — and otherwise into
+    // the configured note.
+    const captureNote = $derived($pluginSettingsStore?.captureNote ?? "")
+    const quickAddPath = $derived(activeProject ?? (captureNote || null))
+    const quickAddLabel = $derived(
+        quickAddPath ? (quickAddPath.split("/").pop() ?? quickAddPath).replace(/\.md$/, "") : ""
+    )
+
+    async function handleCreate(text: string): Promise<boolean> {
+        if (!quickAddPath) return false
+        try {
+            await createTask(text, quickAddPath, plugin.app.vault)
+            return true
+        } catch (e) {
+            new Notice(`Mission Control: could not add task — ${(e as Error).message}`)
+            return false
+        }
+    }
 
     /** Returns whether the write landed, so the row can revert its optimistic state. */
     async function handleToggle(task: Task): Promise<boolean> {
@@ -258,6 +288,13 @@
 </script>
 
 <div class="mc-dashboard">
+    <QuickAdd
+        targetPath={quickAddPath}
+        targetLabel={quickAddLabel}
+        targetIsProject={activeProject !== null}
+        oncreate={handleCreate}
+    />
+
     <div class="mc-bar" bind:this={barEl}>
         <!-- Wide viewports: button row. Narrow viewports: native select. CSS swaps them. -->
         <div class="mc-tabbar">

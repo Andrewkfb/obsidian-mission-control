@@ -33,6 +33,9 @@ export interface Dashboard {
     // `today` and `upcoming` this accounts for every task, so nothing is
     // silently invisible.
     backlog: TaskGroup[]
+    // Recently completed work, newest first. A review surface rather than an
+    // inventory, so it only covers the last `completedDays`.
+    completed: TaskGroup[]
     projects: ProjectSummary[]
     recurring: RecurringEntry[]
 }
@@ -52,7 +55,54 @@ function effectiveDate(task: Task): string | undefined {
     return task.due ?? task.scheduled
 }
 
-export function buildDashboard(allTasks: Task[], todayISO: string, opts: { upcomingDays: number; showCompleted: boolean }): Dashboard {
+/** Completed tasks sort newest-first by completion date, then by text. */
+function sortCompleted(a: Task, b: Task): number {
+    const ad = a.done ?? ''
+    const bd = b.done ?? ''
+    if (ad !== bd) return ad > bd ? -1 : 1
+    return a.text.localeCompare(b.text)
+}
+
+/**
+ * Group recently completed tasks by their ✅ date.
+ *
+ * Built from the unfiltered task list, so the Done tab works regardless of the
+ * `showCompletedTasks` setting — that setting controls whether completed work
+ * also appears in the Today/Upcoming panes.
+ *
+ * Tasks completed without a ✅ date are left out on purpose: there is no way to
+ * tell whether they are recent, and including them would dump a vault's entire
+ * completed history into a "recently done" view. Mission Control stamps the date
+ * on anything it completes itself.
+ */
+function buildCompleted(allTasks: Task[], todayISO: string, windowDays: number): TaskGroup[] {
+    const yesterdayISO = addDaysISO(todayISO, -1)
+    const cutoffISO = addDaysISO(todayISO, -windowDays)
+
+    const doneToday: Task[] = []
+    const doneYesterday: Task[] = []
+    const doneEarlier: Task[] = []
+
+    for (const task of allTasks) {
+        if (!task.checked || !task.done) continue
+        if (task.done > todayISO) continue
+        if (task.done === todayISO) doneToday.push(task)
+        else if (task.done === yesterdayISO) doneYesterday.push(task)
+        else if (task.done >= cutoffISO) doneEarlier.push(task)
+    }
+
+    const group = (key: string, title: string, list: Task[]): TaskGroup => ({
+        key, title, tasks: list.sort(sortCompleted),
+    })
+
+    return [
+        group('doneToday', 'Today', doneToday),
+        group('doneYesterday', 'Yesterday', doneYesterday),
+        group('doneEarlier', `Earlier (last ${windowDays} days)`, doneEarlier),
+    ].filter(g => g.tasks.length > 0)
+}
+
+export function buildDashboard(allTasks: Task[], todayISO: string, opts: { upcomingDays: number; showCompleted: boolean; completedDays: number }): Dashboard {
     const tasks = opts.showCompleted ? allTasks : allTasks.filter(t => !t.checked)
 
     const overdue: Task[] = []
@@ -165,7 +215,9 @@ export function buildDashboard(allTasks: Task[], todayISO: string, opts: { upcom
             return a.task.text.localeCompare(b.task.text)
         })
 
-    return { today, upcoming, backlog, projects, recurring }
+    const completed = buildCompleted(allTasks, todayISO, opts.completedDays)
+
+    return { today, upcoming, backlog, completed, projects, recurring }
 }
 
 /** Whole-day overdue amount for a task, for the "3d overdue" badge. */

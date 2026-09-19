@@ -55,6 +55,11 @@ export interface HomeTabSettings {
     dayStartHour: number
     showCompletedTasks: boolean
     upcomingDays: number
+    // How many days back the Done tab reaches.
+    completedDays: number
+    // Vault-relative path to the note quick-add appends to when no project is
+    // selected. Empty disables quick-add.
+    captureNote: string
     // Whitelist of tags (without '#') that appear in the dashboard's tag-filter menu.
     // Empty array = show every tag found in indexed notes.
     allowedFilterTags: string[]
@@ -107,10 +112,12 @@ export const DEFAULT_SETTINGS: HomeTabSettings = {
     dayStartHour: 4,
     showCompletedTasks: false,
     upcomingDays: 7,
+    completedDays: 7,
+    captureNote: '',
     allowedFilterTags: [],
     activeFilterTags: [],
     showHeadings: true,
-    activeTabs: ['today', 'upcoming', 'backlog', 'projects', 'recurring', 'inbox', 'bookmarks', 'recent'],
+    activeTabs: ['today', 'upcoming', 'backlog', 'done', 'projects', 'recurring', 'inbox', 'bookmarks', 'recent'],
     mergedTabAdditions: [],
     inboxFolder: '01 Inbox',
 }
@@ -125,6 +132,8 @@ const SETTING = {
     taskSourceFolder: 'Task source folder',
     dayStartsAt: 'Day starts at',
     upcomingWindowDays: 'Upcoming window (days)',
+    completedWindowDays: 'Completed window (days)',
+    quickAddNote: 'Quick-add note',
     showCompletedTasks: 'Show completed tasks',
     showHeadings: 'Show headings',
     dashboardTabs: 'Dashboard tabs',
@@ -161,7 +170,7 @@ const SETTING = {
 // appended rather than duplicated above.
 const SETTING_SEARCH_ALIASES: string[] = [
     ...Object.values(SETTING),
-    'Today', 'Upcoming', 'Backlog', 'Projects', 'Recurring', 'Inbox', 'Bookmarks', 'Recent files',
+    'Today', 'Upcoming', 'Backlog', 'Done', 'Projects', 'Recurring', 'Inbox', 'Bookmarks', 'Recent files',
 ]
 
 
@@ -223,6 +232,13 @@ export class HomeTabSettingTab extends PluginSettingTab{
         return folders.sort((a, b) => a.localeCompare(b))
     }
 
+    /** Every Markdown file path in the vault, sorted — used by the quick-add picker. */
+    private vaultMarkdownFiles(): string[] {
+        return this.app.vault.getMarkdownFiles()
+            .map(f => f.path)
+            .sort((a, b) => a.localeCompare(b))
+    }
+
     private renderTaskSettings(containerEl: HTMLElement): void {
         new Setting(containerEl).setName(SETTING.taskManagement).setHeading()
 
@@ -239,6 +255,20 @@ export class HomeTabSettingTab extends PluginSettingTab{
                     this.plugin.settings.taskSourceFolder = value
                     this.plugin.saveSettings()
                     void this.plugin.taskIndex?.rebuild()
+                })
+            })
+
+        new Setting(containerEl)
+            .setName(SETTING.quickAddNote)
+            .setDesc('Note that quick-add appends to when no project is selected. Selecting a project captures into that project instead.')
+            .addDropdown(dropdown => {
+                dropdown.addOption('', '(None — quick-add disabled)')
+                for (const path of this.vaultMarkdownFiles()) dropdown.addOption(path, path)
+                dropdown.setValue(this.plugin.settings.captureNote)
+                dropdown.onChange(value => {
+                    this.plugin.settings.captureNote = value
+                    this.plugin.saveSettings()
+                    this.plugin.refreshOpenViews()
                 })
             })
 
@@ -262,6 +292,18 @@ export class HomeTabSettingTab extends PluginSettingTab{
                 .setValue(this.plugin.settings.upcomingDays)
                 .onChange(value => {
                     this.plugin.settings.upcomingDays = value
+                    this.plugin.saveSettings()
+                    this.plugin.refreshOpenViews()
+                }))
+
+        new Setting(containerEl)
+            .setName(SETTING.completedWindowDays)
+            .setDesc('How far back the done pane reaches. Tasks completed without a ✅ date are not listed.')
+            .addSlider(slider => slider
+                .setLimits(1, 30, 1)
+                .setValue(this.plugin.settings.completedDays)
+                .onChange(value => {
+                    this.plugin.settings.completedDays = value
                     this.plugin.saveSettings()
                     this.plugin.refreshOpenViews()
                 }))
@@ -298,6 +340,7 @@ export class HomeTabSettingTab extends PluginSettingTab{
             { id: 'today',     label: 'Today' },
             { id: 'upcoming',  label: 'Upcoming' },
             { id: 'backlog',   label: 'Backlog' },
+            { id: 'done',      label: 'Done' },
             { id: 'projects',  label: 'Projects' },
             { id: 'recurring', label: 'Recurring' },
             { id: 'inbox',     label: 'Inbox' },

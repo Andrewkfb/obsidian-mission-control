@@ -6,10 +6,20 @@ import { DEFAULT_SETTINGS } from '../src/settings'
 import TodayTab from '../src/ui/tasks/tabs/TodayTab.svelte'
 import UpcomingTab from '../src/ui/tasks/tabs/UpcomingTab.svelte'
 import BacklogTab from '../src/ui/tasks/tabs/BacklogTab.svelte'
+import DoneTab from '../src/ui/tasks/tabs/DoneTab.svelte'
+import QuickAdd from '../src/ui/tasks/QuickAdd.svelte'
 import RecurringTab from '../src/ui/tasks/tabs/RecurringTab.svelte'
 import ProjectsTab from '../src/ui/tasks/tabs/ProjectsTab.svelte'
 import TaskItem from '../src/ui/tasks/TaskItem.svelte'
 import TagFilterButton from '../src/ui/tasks/TagFilterButton.svelte'
+
+/** The rendered <input>/<button> open tag, so assertions can target one element. */
+const tagAfter = (body: string, marker: string) => {
+    const i = body.indexOf(marker)
+    return i === -1 ? '' : body.slice(i, body.indexOf('>', i) + 1)
+}
+const inputTag = (body: string) => tagAfter(body, '<input')
+const buttonTag = (body: string) => tagAfter(body, '<button')
 
 let failures = 0
 function assert(cond: boolean, msg: string) {
@@ -31,7 +41,11 @@ const tasks = [
     mk('- [ ] Standup 🔁 every day 📅 2026-05-28'),
     mk('- [ ] Linked [[Some Note|note]] task 📅 2026-05-28'),
 ]
-const dashboard = buildDashboard(tasks, TODAY, { upcomingDays: 7, showCompleted: false })
+const completedTasks = [
+    { ...mk('- [x] Shipped the thing'), done: TODAY },
+    { ...mk('- [x] Older win'), done: '2026-05-26' },
+]
+const dashboard = buildDashboard([...tasks, ...completedTasks], TODAY, { upcomingDays: 7, showCompleted: false, completedDays: 7 })
 const app = { vault: { getAbstractFileByPath: () => null }, workspace: {} }
 const noop = () => {}
 const noopToggle = async () => true
@@ -90,6 +104,36 @@ console.log('SSR render smoke tests:')
     const done = mk('- [x] Finished thing 📅 2026-05-28')
     const { body } = render(TaskItem, { props: { app, task: done, todayISO: TODAY, ontoggle: noopToggle } })
     assert(body.includes('aria-checked="true"'), 'TaskItem reflects a completed task as checked')
+}
+{
+    const { body } = render(DoneTab, { props: { app, dashboard, todayISO: TODAY, ontoggle: noopToggle } })
+    assert(body.includes('Shipped the thing'), 'DoneTab renders work completed today')
+    assert(body.includes('Older win'), 'DoneTab renders work completed earlier in the window')
+    assert(body.includes('Today'), 'DoneTab groups by completion date')
+}
+{
+    const { body } = render(QuickAdd, {
+        props: { targetPath: 'Inbox.md', targetLabel: 'Inbox', targetIsProject: false, oncreate: async () => true },
+    })
+    assert(body.includes('Add a task'), 'QuickAdd offers the input when a target is set')
+    assert(body.includes('Inbox'), 'QuickAdd names the note it captures into')
+    assert(!inputTag(body).includes('disabled'), 'QuickAdd input is enabled when a target is set')
+    // The button stays disabled until something is typed, which is the point.
+    assert(buttonTag(body).includes('disabled'), 'QuickAdd will not submit an empty task')
+}
+{
+    // With nothing configured the control must explain itself rather than silently fail.
+    const { body } = render(QuickAdd, {
+        props: { targetPath: null, targetLabel: '', targetIsProject: false, oncreate: async () => true },
+    })
+    assert(inputTag(body).includes('disabled'), 'QuickAdd input is disabled with no target configured')
+    assert(body.includes('settings'), 'QuickAdd explains how to enable itself')
+}
+{
+    const { body } = render(QuickAdd, {
+        props: { targetPath: 'Proj.md', targetLabel: 'Proj', targetIsProject: true, oncreate: async () => true },
+    })
+    assert(body.includes('selected project'), 'QuickAdd says when it is capturing into the active project')
 }
 {
     const { body } = render(TagFilterButton, { props: { availableTags: ['work', 'home'], activeTags: ['work'], onchange: noop } })

@@ -136,3 +136,39 @@ export async function toggleComplete(task: Task, vault: Vault, todayISO: string)
         return lines.join('\n')
     })
 }
+
+/**
+ * Turn free text into a task line.
+ *
+ * The text is used verbatim as the task body, so everything the parser already
+ * understands — 📅 dates, ⏫ priority, 🔁 recurrence, #tags, [key:: value] —
+ * works without a separate serializer to keep in sync. A pasted line that
+ * already carries its own checkbox is accepted and normalised to an open one.
+ *
+ * Returns undefined when there is nothing to add.
+ */
+export function buildTaskLine(input: string): string | undefined {
+    const text = input.trim().replace(/^[\s>]*[-*+]\s*\[.\]\s*/, '').trim()
+    if (!text) return undefined
+    return `- [ ] ${text}`
+}
+
+/**
+ * Append a task line to a note, leaving exactly one trailing newline and never
+ * gluing the task onto whatever the last line happened to be.
+ */
+export function appendTaskLine(content: string, line: string): string {
+    const body = content.replace(/\s+$/, '')
+    return body.length === 0 ? `${line}\n` : `${body}\n${line}\n`
+}
+
+/** Append a new open task to a note. Throws with a user-facing message on failure. */
+export async function createTask(input: string, targetPath: string, vault: Vault): Promise<void> {
+    const line = buildTaskLine(input)
+    if (!line) throw new Error('nothing to add')
+
+    const file = vault.getFileByPath(targetPath)
+    if (!file) throw new Error(`capture note not found: ${targetPath}`)
+
+    await vault.process(file, content => appendTaskLine(content, line))
+}

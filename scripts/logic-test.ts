@@ -4,7 +4,7 @@
 import { parseTasks, parseTaskLine } from '../src/tasks/TaskParser'
 import { buildDashboard } from '../src/tasks/grouping'
 import { getToday, addDaysISO, msUntilNextDayStart } from '../src/tasks/dates'
-import { applyToggleToLine, buildNextRecurrence, resolveTaskLine, toggleComplete } from '../src/tasks/TaskWriter'
+import { applyToggleToLine, buildNextRecurrence, resolveTaskLine, toggleComplete, buildTaskLine, appendTaskLine, createTask } from '../src/tasks/TaskWriter'
 import { isInFolder, isDirectChildOf } from '../src/utils/paths'
 import { tagMatches, taskMatchesTags } from '../src/tasks/tags'
 import { mergeTabAdditions } from '../src/utils/tabs'
@@ -138,7 +138,7 @@ console.log('\ngrouping:')
         mk({}),
         mk({ due: addDaysISO(today, 60) }),
     ]
-    const d = buildDashboard(taskList, today, { upcomingDays: 7, showCompleted: false })
+    const d = buildDashboard(taskList, today, { upcomingDays: 7, showCompleted: false, completedDays: 7 })
     const todayKeys = d.today.map(g => g.key)
     assert(todayKeys.includes('overdue'), 'today has overdue group')
     assert(todayKeys.includes('dueToday'), 'today has dueToday group')
@@ -152,11 +152,11 @@ console.log('\ngrouping:')
     assert(d.projects[0].openCount === 8, 'project open count includes all open tasks')
 
     const completed = mk({ status: 'done', checked: true, due: today }, '- [x] done today')
-    const withCompleted = buildDashboard([...taskList, completed], today, { upcomingDays: 7, showCompleted: true })
+    const withCompleted = buildDashboard([...taskList, completed], today, { upcomingDays: 7, showCompleted: true, completedDays: 7 })
     assert(withCompleted.today.find(g => g.key === 'dueToday')?.tasks.includes(completed) ?? false, 'show completed includes dated completed tasks')
 
     const recurring = mk({ recurrence: 'every week', due: today })
-    const recurringDashboard = buildDashboard([recurring], today, { upcomingDays: 7, showCompleted: false })
+    const recurringDashboard = buildDashboard([recurring], today, { upcomingDays: 7, showCompleted: false, completedDays: 7 })
     assert(recurringDashboard.recurring[0]?.nextDate === addDaysISO(today, 7), 'recurring dashboard computes next occurrence')
 
     // --- backlog ---
@@ -176,7 +176,7 @@ console.log('\ngrouping:')
     // all and disappear from every pane.
     {
         const pastScheduled = mk({ scheduled: addDaysISO(today, -5) })
-        const dd = buildDashboard([pastScheduled], today, { upcomingDays: 7, showCompleted: false })
+        const dd = buildDashboard([pastScheduled], today, { upcomingDays: 7, showCompleted: false, completedDays: 7 })
         const scheduled = dd.today.find(g => g.key === 'scheduled')
         assert(scheduled?.tasks.includes(pastScheduled) ?? false, 'a past scheduled date surfaces on Today')
     }
@@ -198,7 +198,7 @@ console.log('\ngrouping:')
             mk({ scheduled: addDaysISO(today, 400) }),
             mk({ due: addDaysISO(today, 2), scheduled: addDaysISO(today, -3) }),
         ]
-        const full = buildDashboard(everyShape, today, { upcomingDays: 7, showCompleted: false })
+        const full = buildDashboard(everyShape, today, { upcomingDays: 7, showCompleted: false, completedDays: 7 })
         const placements = new Map<Task, number>()
         for (const pane of [full.today, full.upcoming, full.backlog]) {
             for (const g of pane) for (const t of g.tasks) placements.set(t, (placements.get(t) ?? 0) + 1)
@@ -208,6 +208,72 @@ console.log('\ngrouping:')
         assert(missing.length === 0, `every open task lands in a pane (${missing.length} missing)`)
         assert(duplicated.length === 0, `no open task is double-counted (${duplicated.length} duplicated)`)
     }
+}
+
+// ─── grouping: completed ─────────────────────────────────────────────────────
+console.log('\ngrouping (completed):')
+{
+    const today = '2026-05-28'
+    const done = (doneISO: string | undefined, text = 'x') => {
+        const t = parseTaskLine(`- [x] ${text}`, 'A.md', 0, 'A')!
+        return { ...t, done: doneISO }
+    }
+    const list = [
+        done(today, 'finished today'),
+        done(addDaysISO(today, -1), 'finished yesterday'),
+        done(addDaysISO(today, -3), 'finished earlier'),
+        done(addDaysISO(today, -60), 'ancient history'),
+        done(undefined, 'no completion stamp'),
+        done(addDaysISO(today, 5), 'future stamp'),
+    ]
+    const d = buildDashboard(list, today, { upcomingDays: 7, showCompleted: false, completedDays: 7 })
+    const keys = d.completed.map(g => g.key)
+    assert(keys.includes('doneToday'), 'completed has a Today group')
+    assert(keys.includes('doneYesterday'), 'completed has a Yesterday group')
+    assert(keys.includes('doneEarlier'), 'completed has an Earlier group')
+
+    const all = d.completed.flatMap(g => g.tasks.map(t => t.text))
+    assert(all.includes('finished today'), 'completed includes work done today')
+    assert(all.includes('finished earlier'), 'completed includes work inside the window')
+    assert(!all.includes('ancient history'), 'completed drops work older than the window')
+    assert(!all.includes('no completion stamp'), 'completed drops tasks with no ✅ date')
+    assert(!all.includes('future stamp'), 'completed drops future-dated completions')
+
+    // The Done tab is a review surface, so it must not depend on the setting that
+    // controls whether completed work also shows in the Today/Upcoming panes.
+    const hidden = buildDashboard(list, today, { upcomingDays: 7, showCompleted: false, completedDays: 7 })
+    const shown = buildDashboard(list, today, { upcomingDays: 7, showCompleted: true, completedDays: 7 })
+    assert(hidden.completed.length === shown.completed.length, 'completed ignores the showCompleted setting')
+
+    const ordered = buildDashboard(
+        [done(addDaysISO(today, -2), 'older'), done(today, 'newer')],
+        today, { upcomingDays: 7, showCompleted: false, completedDays: 7 })
+    // Guarded, not indexed blindly: a missing group should fail this assertion
+    // rather than throw and hide every test that follows.
+    assert(ordered.completed[0]?.tasks[0]?.text === 'newer', 'completed groups run newest first')
+}
+
+// ─── TaskWriter: creating tasks ──────────────────────────────────────────────
+console.log('\nTaskWriter (buildTaskLine / appendTaskLine):')
+{
+    assert(buildTaskLine('Write notes') === '- [ ] Write notes', 'plain text becomes an open task')
+    assert(buildTaskLine('  padded  ') === '- [ ] padded', 'surrounding whitespace is trimmed')
+    assert(buildTaskLine('') === undefined, 'empty input produces nothing')
+    assert(buildTaskLine('   ') === undefined, 'whitespace-only input produces nothing')
+    // Metadata is carried verbatim, so whatever the parser reads, quick-add writes.
+    const rich = buildTaskLine('Ship it 📅 2026-06-01 ⏫ #release')!
+    assert(rich === '- [ ] Ship it 📅 2026-06-01 ⏫ #release', 'metadata is preserved verbatim')
+    const round = parseTaskLine(rich, 'P.md', 0, 'P')!
+    assert(round.due === '2026-06-01' && round.priority === 'high' && round.tags.includes('release'),
+        'a created line round-trips through the parser')
+    // Pasting a whole task line should not produce a double checkbox.
+    assert(buildTaskLine('- [ ] Already a task') === '- [ ] Already a task', 'a pasted open task is accepted as-is')
+    assert(buildTaskLine('- [x] Done elsewhere') === '- [ ] Done elsewhere', 'a pasted completed task is reopened')
+
+    assert(appendTaskLine('', '- [ ] a') === '- [ ] a\n', 'appending to an empty note')
+    assert(appendTaskLine('# Notes', '- [ ] a') === '# Notes\n- [ ] a\n', 'appending after content')
+    assert(appendTaskLine('# Notes\n\n\n', '- [ ] a') === '# Notes\n- [ ] a\n', 'trailing blank lines are collapsed')
+    assert(appendTaskLine('- [ ] first\n', '- [ ] b') === '- [ ] first\n- [ ] b\n', 'appending after an existing task')
 }
 
 // ─── tasks/tags ──────────────────────────────────────────────────────────────
@@ -248,6 +314,12 @@ console.log('\nsettings (mergeTabAdditions):')
     // Having merged once, a user turning the tab off must not have it re-added.
     const optedOut = mergeTabAdditions(['today', 'upcoming'], ['backlog'], DEFAULT_TABS, ['backlog'])
     assert(!optedOut.activeTabs.includes('backlog'), 'a deliberately disabled tab is not re-added')
+
+    // A second addition must reach installs that already merged the first one.
+    const twoAdditions = mergeTabAdditions(['today', 'backlog'], ['backlog'], DEFAULT_TABS, ['backlog', 'done'])
+    assert(twoAdditions.activeTabs.includes('done'), 'a later addition is merged in on its own')
+    assert(twoAdditions.activeTabs.filter(t => t === 'backlog').length === 1, 'an already-merged addition is not duplicated')
+    assert(twoAdditions.mergedTabAdditions.includes('done'), 'the later addition is recorded as merged')
 
     // Re-running the merge without an intervening save is idempotent.
     const again = mergeTabAdditions(upgraded.activeTabs, upgraded.mergedTabAdditions, DEFAULT_TABS, ['backlog'])
@@ -423,6 +495,27 @@ async function testToggleComplete(): Promise<void> {
         assert(lines.length === 2, 'recurring: a line is added')
         assert(lines[0].includes('[ ]') && lines[0].includes('📅 2026-05-29'), 'recurring: next occurrence is open and advanced')
         assert(lines[1].includes('[x]') && lines[1].includes('✅ 2026-05-28'), 'recurring: original is completed and stamped')
+    }
+
+    // Creating a task lands in the target note and nowhere else.
+    {
+        const files = { 'Inbox.md': '# Inbox\n\n- [ ] existing' }
+        await createTask('New thing 📅 2026-06-01', 'Inbox.md', fakeVault(files))
+        const lines = files['Inbox.md'].split('\n')
+        assert(lines[lines.length - 2] === '- [ ] New thing 📅 2026-06-01', 'createTask appends the new task last')
+        assert(lines.includes('- [ ] existing'), 'createTask leaves existing content alone')
+    }
+    {
+        let rejected = false
+        try { await createTask('x', 'Missing.md', fakeVault({})) } catch { rejected = true }
+        assert(rejected, 'createTask refuses when the target note is missing')
+    }
+    {
+        const files = { 'Inbox.md': '# Inbox' }
+        let rejected = false
+        try { await createTask('   ', 'Inbox.md', fakeVault(files)) } catch { rejected = true }
+        assert(rejected, 'createTask refuses empty input')
+        assert(files['Inbox.md'] === '# Inbox', 'refused creation leaves the note untouched')
     }
 
     // A missing source file surfaces as a rejection rather than a silent no-op.

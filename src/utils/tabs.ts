@@ -9,7 +9,7 @@
  *
  * Kept free of Obsidian imports so it stays covered by the logic tests.
  */
-export const TAB_ADDITIONS = ['backlog']
+export const TAB_ADDITIONS = ['backlog', 'done']
 
 export function mergeTabAdditions(
     savedActiveTabs: string[] | undefined,
